@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Replace the two placeholders with the family's Gmail addresses, then publish in
+    // Firebase console → Firestore → Rules.
+    function signedInFamily() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in [
+          'YOUR_GMAIL@gmail.com',
+          'PARTNER_GMAIL@gmail.com'
+        ];
+    }
+    match /families/{fid}/{document=**} {
+      allow read, write: if signedInFamily() && fid == 'devilliers';
+    }
+  }
+}
