@@ -13,6 +13,13 @@ const folded = (k: string) => !!cmap()[k];
 const toggle = (k: string) => { const m = cmap(); if (m[k]) delete m[k]; else m[k] = true; localStorage.setItem(LS, JSON.stringify(m)); };
 const all = () => S.list<Wish>('wishes');
 const r = () => S.bus.rerender();
+/** A concrete owner name so a saved wish is never invisible in the grouped list. */
+export function defaultWishWho() {
+  const names = members().map(m => m.name);
+  const last = (typeof localStorage !== 'undefined' && localStorage.getItem('qaLastWishWho')) || '';
+  if (last && names.includes(last)) return last;
+  return names[0] || S.bus.me || 'Thinus';
+}
 function visible(w: Wish) {
   // Hide a bought gift from the person whose list it is, so it stays a surprise
   if (w.boughtBy && S.bus.me && w.who === S.bus.me) return false;
@@ -21,15 +28,16 @@ function visible(w: Wish) {
 function form() {
   const w = edit!;
   const people = members().map(m => m.name);
+  const whoDef = w.who && people.includes(w.who) ? w.who : (people[0] || defaultWishWho());
   const occ = w.occasion && !OCC.includes(w.occasion) ? 'Other' : (w.occasion || 'Anytime');
-  return `<form class="sheet" data-form="wish"><h2>${w.id ? 'Edit wish' : 'New wish'}</h2>
+  return `<form class="sheet" data-form="wish" novalidate><h2>${w.id ? 'Edit wish' : 'New wish'}</h2>
   <input name="name" required placeholder="What would they like?" value="${esc(w.name)}" autofocus>
-  <h3>Whose list?</h3><div class="radios ochips">${people.map(p => `<label class="rad"><input type="radio" name="who" value="${esc(p)}" ${p === (w.who || people[0]) ? 'checked' : ''}><span>${avatar(p)} ${esc(p)}</span></label>`).join('')}</div>
+  <h3>Whose list?</h3><div class="radios ochips">${people.map(p => `<label class="rad"><input type="radio" name="who" value="${esc(p)}" ${p === whoDef ? 'checked' : ''}><span>${avatar(p)} ${esc(p)}</span></label>`).join('')}</div>
   <h3>Occasion</h3><div class="radios">${[...OCC, 'Other'].map(o => `<label class="rad"><input type="radio" name="occ" value="${o}" ${o === occ ? 'checked' : ''}><span>${o}</span></label>`).join('')}</div>
   <button type="button" class="link morebtn" data-wmore id="wmorebtn">More details</button>
   <div class="hidden" id="wmore">
     <input name="occasionCustom" placeholder="Custom occasion (if Other)" value="${esc(!OCC.includes(w.occasion || '') ? w.occasion : '')}">
-    <input name="link" type="url" placeholder="Link (optional)" value="${esc(w.link)}">
+    <input name="link" type="text" inputmode="url" autocomplete="off" placeholder="Link (optional)" value="${esc(w.link)}">
     <input name="price" placeholder="Price (optional)" value="${esc(w.price)}">
     <textarea name="notes" rows="2" placeholder="Notes">${esc(w.notes)}</textarea>
     <h3>Priority</h3><div class="radios">${['high', 'med', 'low'].map(p => `<label class="rad"><input type="radio" name="priority" value="${p}" ${(w.priority || 'med') === p ? 'checked' : ''}><span>${PRIO[p]}</span></label>`).join('')}</div>
@@ -60,17 +68,29 @@ function view() {
     }
     h += '</section>';
   }
+  const known = new Set(people.map(p => p.name));
+  const orphans = all().filter(w => visible(w) && !known.has(w.who || ''));
+  if (orphans.length) {
+    any = true;
+    const groups = new Map<string, Wish[]>();
+    for (const w of orphans) { const k = w.who || 'Other'; (groups.get(k) ?? (groups.set(k, []), groups.get(k)!)).push(w); }
+    for (const [name, items] of groups) {
+      h += `<section class="ssec"><button class="shead" data-wfold="p:${esc(name)}"><span class="chev open">▸</span><b>${esc(name)}</b><em class="scount">${items.length}</em></button>`;
+      h += items.map(w => `<button class="item wish ${w.boughtBy ? 'done' : ''}" data-wedit="${w.id}"><span class="iname">${esc(w.name)}${w.price ? `<small>${esc(w.price)}</small>` : ''}</span></button>`).join('');
+      h += '</section>';
+    }
+  }
   if (!any) h += `<div class="emptyart"><span>🎁</span><b>No wishes yet</b><small>Add one with Quick add or the ＋ button.</small></div>`;
   return h;
 }
 export const wishes: Module = {
   nav: () => edit ? { view: edit.id ? 'edit' : 'new', id: edit.id } : {},
   applyNav: n => {
-    if (n.view === 'new') edit = { who: members()[0]?.name, occasion: 'Anytime', priority: 'med' };
+    if (n.view === 'new') edit = { who: defaultWishWho(), occasion: 'Anytime', priority: 'med' };
     else if ((n.view === 'edit' || n.id) && n.id) { const x = S.get<Wish>('wishes', n.id); edit = x ? { ...x } : null; }
     else edit = null;
   },
-  tabs: () => [], tab: () => '', setTab: t => { if (t === 'new') edit = { who: members()[0]?.name, occasion: 'Anytime', priority: 'med' }; },
+  tabs: () => [], tab: () => '', setTab: t => { if (t === 'new') edit = { who: defaultWishWho(), occasion: 'Anytime', priority: 'med' }; },
   render: () => edit ? form() : view(),
   click: async b => {
     const d = b.dataset;
@@ -82,9 +102,25 @@ export const wishes: Module = {
     return false;
   },
   submit: async f => {
+    const name = val(f, 'name');
+    if (!name) { S.bus.toast('Please enter a name', 'err'); return; }
     const occSel = val(f, 'occ');
     const occasion = occSel === 'Other' ? (val(f, 'occasionCustom') || 'Other') : occSel || 'Anytime';
-    await S.save<Wish>('wishes', { ...(edit as Wish), name: val(f, 'name'), who: val(f, 'who'), occasion, link: val(f, 'link'), price: val(f, 'price'), notes: val(f, 'notes'), priority: (val(f, 'priority') || 'med') as Wish['priority'], boughtBy: val(f, 'boughtBy') });
+    const who = val(f, 'who') || edit?.who || defaultWishWho();
+    const link = val(f, 'link');
+    const price = val(f, 'price');
+    const notes = val(f, 'notes');
+    const boughtBy = val(f, 'boughtBy');
+    await S.save<Wish>('wishes', {
+      ...(edit as Wish),
+      name, who, occasion,
+      ...(link ? { link } : { link: '' }),
+      ...(price ? { price } : { price: '' }),
+      ...(notes ? { notes } : { notes: '' }),
+      priority: (val(f, 'priority') || 'med') as Wish['priority'],
+      boughtBy,
+    });
+    try { localStorage.setItem('qaLastWishWho', who); } catch { /* ignore */ }
     edit = null; S.bus.toast('Saved ✓'); r();
   },
 };

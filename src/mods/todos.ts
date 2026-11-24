@@ -83,8 +83,8 @@ export const todos: Module = {
     return false;
   },
   submit: async f => {
-    if (f.dataset.form === 'todoadd') { const title = val(f, 'title'); if (!title) return; const who = filter === 'mine' && S.bus.me ? S.bus.me : filter === 'other' ? otherAdult() : 'Unassigned'; await S.save<Todo>('todos', { listId: curList || tlists()[0]?.id, title, who, due: '', done: false, repeat: 'none' } as Todo); r(); (document.querySelector('.quick input') as HTMLInputElement)?.focus(); return; }
-    await S.save<Todo>('todos', { ...(edit as Todo), done: edit!.done ?? false, title: val(f, 'title'), listId: val(f, 'listId'), who: val(f, 'who') || 'Unassigned', due: val(f, 'due'), repeat: (val(f, 'repeat') || 'none') as Todo['repeat'], notes: val(f, 'notes') });
+    if (f.dataset.form === 'todoadd') { const title = val(f, 'title'); if (!title) { S.bus.toast('Please enter a name', 'err'); return; } const who = filter === 'mine' && S.bus.me ? S.bus.me : filter === 'other' ? otherAdult() : 'Unassigned'; const listId = curList || tlists()[0]?.id; if (!listId) { S.bus.toast('No to-do list yet – try again in a moment', 'err'); return; } await S.save<Todo>('todos', { listId, title, who, due: '', done: false, repeat: 'none' } as Todo); r(); (document.querySelector('.quick input') as HTMLInputElement)?.focus(); return; }
+    const listId = val(f, 'listId') || edit?.listId || tlists()[0]?.id; if (!listId) { S.bus.toast('No to-do list yet – try again in a moment', 'err'); return; } if (!val(f, 'title')) { S.bus.toast('Please enter a name', 'err'); return; } await S.save<Todo>('todos', { ...(edit as Todo), done: edit!.done ?? false, title: val(f, 'title'), listId, who: val(f, 'who') || 'Unassigned', due: val(f, 'due'), repeat: (val(f, 'repeat') || 'none') as Todo['repeat'], notes: val(f, 'notes') });
     edit = null; S.bus.toast('Saved ✓'); r();
   },
 };

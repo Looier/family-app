@@ -19,6 +19,8 @@ import { ensureTodoLists } from './mods/todos';
 import { homeView } from './mods/home';
 import { weekly, setPlanDate, onBlurField } from './mods/weekly';
 import { ensureMembers, memberChips, memberByName, members, kids, settingsView, settingsClick } from './mods/members';
+import { ensureStarterRecipes } from './mods/seeds';
+import { shortErr, stripUndefined } from './util';
 type Mod = 'home' | 'health' | 'calendar' | 'meals' | 'todos' | 'shopping' | 'plan' | 'settings' | 'notes' | 'wishes';
 const MODS: Record<string, Module> = { calendar, meals, todos, shopping, plan: weekly, notes, wishes };
 let mod: Mod = 'home';
@@ -53,31 +55,41 @@ async function flush() {
   const ids = await pending(); const left: string[] = [];
   for (const id of ids) {
     const e = await db.getEntry(id); if (!e) continue;
-    try { await a.pushEntry(e); } catch (err) { left.push(id); st.syncErr = String(err); }
+    try { await a.pushEntry(e); } catch (err) { left.push(id); st.syncErr = String(err); toast('Couldn’t sync: ' + shortErr(err), 'err'); }
   }
-  if (await db.getKV('medsPending')) { try { await a.pushMeds(st.meds); await db.setKV('medsPending', false); } catch (err) { st.syncErr = String(err); } }
+  if (await db.getKV('medsPending')) { try { await a.pushMeds(st.meds); await db.setKV('medsPending', false); } catch (err) { st.syncErr = String(err); toast('Couldn’t sync: ' + shortErr(err), 'err'); } }
   await db.setKV('pending', left);
 }
 async function saveEntry(e: HealthEntry) {
-  e.updatedAt = Date.now(); e.author = st.user ?? undefined;
-  await db.putEntry(e);
-  const p = await pending(); if (!p.includes(e.id)) p.push(e.id); await db.setKV('pending', p);
-  flush();
+  try {
+    e.updatedAt = Date.now(); e.author = st.user || undefined;
+    const clean = stripUndefined({ ...e });
+    Object.assign(e, clean);
+    await db.putEntry(clean);
+    const p = await pending(); if (!p.includes(e.id)) p.push(e.id); await db.setKV('pending', p);
+    flush();
+  } catch (err) {
+    toast('Couldn’t save: ' + shortErr(err), 'err');
+    throw err;
+  }
 }
 async function saveMeds(list: string[]) {
   st.meds = { meds: list, updatedAt: Date.now() }; await db.setMeds(st.meds); await db.setKV('medsPending', true); flush();
 }
 let unsub: (() => void) | null = null, unsubDocs: (() => void) | null = null;
 async function initSync() {
-  st.adapter = await loadAdapter(); const a = st.adapter; if (!a) return;
+  st.adapter = await loadAdapter(); const a = st.adapter;
+  if (!a) { await ensureStarterRecipes(); render(); return; }
   a.onAuth(async email => {
     st.user = email; unsub?.(); unsub = null; unsubDocs?.(); unsubDocs = null;
     if (email) {
       unsub = a.subscribe(async rows => { await db.mergeEntries(rows); await refresh(); if (mod !== 'health' || st.tab !== 'entry') S.softRender(); },
         async m => { if (m.updatedAt > st.meds.updatedAt) { await db.setMeds(m); await refresh(); render(); } },
-        e => { st.syncErr = String((e as Error).message ?? e); render(); });
-      unsubDocs = S.attach(a, e => { st.syncErr = String((e as Error).message ?? e); render(); });
+        e => { st.syncErr = String((e as Error).message ?? e); toast('Couldn’t sync: ' + shortErr(e), 'err'); render(); });
+      unsubDocs = S.attach(a, e => { st.syncErr = String((e as Error).message ?? e); toast('Couldn’t sync: ' + shortErr(e), 'err'); render(); }, ensureStarterRecipes);
       await flush();
+    } else {
+      await ensureStarterRecipes();
     }
     render();
   });
@@ -214,9 +226,19 @@ function render() {
   else if (st.tab === 'month') body = childPick() + renderMonth(st.entries.filter(e => e.child === st.child), st.monthOffset, todayStr());
   $app.innerHTML = `${banner()}${subtabs()}<main class="m-${mod}">${body}</main>${fab(body)}${bnav()}${moreSheet()}${qaSheet()}<div id="toast"></div>`;
   capturePristine();
+  if (pendingToast) queueMicrotask(paintToast);
   if (!isApplying()) queueMicrotask(syncFromUi);
 }
-function toast(msg: string) { const t = document.getElementById('toast')!; t.textContent = msg; t.className = 'show'; setTimeout(() => (t.className = ''), 1800); }
+type ToastKind = 'ok' | 'err';
+let pendingToast: { msg: string; kind: ToastKind } | null = null;
+function paintToast() {
+  const el = document.getElementById('toast'); if (!el || !pendingToast) return;
+  const { msg, kind } = pendingToast;
+  el.textContent = msg; el.className = 'show' + (kind === 'err' ? ' err' : '');
+  const hold = kind === 'err' ? 4200 : 2600;
+  setTimeout(() => { if (el.textContent === msg) { el.className = ''; if (pendingToast?.msg === msg) pendingToast = null; } }, hold);
+}
+function toast(msg: string, kind: ToastKind = 'ok') { pendingToast = { msg, kind }; paintToast(); }
 const toggle = (arr: string[], v: string) => arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v];
 function setChild(name: string) {
   st.child = name || st.child;
@@ -247,8 +269,12 @@ $app.addEventListener('touchend', e => {
 });
 $app.addEventListener('submit', async ev => {
   const f = ev.target as HTMLFormElement; ev.preventDefault();
-  if (f.dataset.form === 'qa') { await qaSubmit(f); return; }
-  const M = mod === 'home' || mod === 'settings' ? null : MODS[mod]; if (M?.submit) await M.submit(f);
+  try {
+    if (f.dataset.form === 'qa') { await qaSubmit(f); return; }
+    const M = mod === 'home' || mod === 'settings' ? null : MODS[mod]; if (M?.submit) await M.submit(f);
+  } catch (e) {
+    toast('Couldn’t save: ' + shortErr(e), 'err');
+  }
 });
 $app.addEventListener('change', async ev => {
   const t = ev.target as HTMLInputElement; const M = MODS[mod]; if (M?.change) await M.change(t);
@@ -288,7 +314,7 @@ $app.addEventListener('click', async ev => {
   if (d.me) { S.bus.me = d.me; localStorage.setItem('me', d.me); return render(); }
   if (await settingsClick(b)) return render();
   if (mod === 'home') { if (d.ev) { mod = 'calendar'; await calendar.click(b); return; } if (d.tt) { await todos.click(b); return; } if (d.tedit) { mod = 'todos'; await todos.click(b); return; } }
-  else if (mod !== 'health' && mod !== 'settings') { await MODS[mod].click(b); return; }
+  else if (mod !== 'health' && mod !== 'settings') { try { await MODS[mod].click(b); } catch (e) { toast('Couldn’t save: ' + shortErr(e), 'err'); } return; }
   if (d.go) { st.tab = d.go as Tab; return render(); }
   if (d.tab) { st.tab = d.tab as Tab; if (st.tab === 'sync') { /* settings */ } else if (st.tab !== 'entry') await refresh(); return render(); }
   if (d.child) { setChild(d.child); return render(); }

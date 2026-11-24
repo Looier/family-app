@@ -1,7 +1,7 @@
 {
   "name": "family-app",
   "private": true,
-  "version": "0.2.4",
+  "version": "0.2.5",
   "type": "module",
   "scripts": { "dev": "vite", "build": "tsc --noEmit && vite build", "build:pages": "tsc --noEmit && PAGES=1 vite build", "preview": "vite preview" },
   "dependencies": { "firebase": "^10.14.1", "idb": "^8.0.0" },

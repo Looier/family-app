@@ -13,3 +13,22 @@ export const checked = (f: HTMLFormElement, n: string) => !!(f.elements.namedIte
 export const radios = (name: string, opts: readonly string[], cur: string, colors?: Record<string, string>) =>
   `<div class="radios">${opts.map(o => `<label class="rad"><input type="radio" name="${name}" value="${esc(o)}" ${o === cur ? 'checked' : ''}><span ${colors ? `style="--c:${colors[o]}"` : ''}>${esc(o)}</span></label>`).join('')}</div>`;
 export const opts = (list: readonly string[], cur: string) => list.map(o => `<option ${o === cur ? 'selected' : ''}>${esc(o)}</option>`).join('');
+
+/** Drop undefined fields (and nested ones) so Firestore setDoc never sees them. */
+export function stripUndefined<T>(v: T): T {
+  if (v === undefined || v === null || typeof v !== 'object') return v;
+  if (Array.isArray(v)) return v.filter(x => x !== undefined).map(x => stripUndefined(x)) as T;
+  const out: Record<string, unknown> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (val === undefined) continue;
+    out[k] = stripUndefined(val);
+  }
+  return out as T;
+}
+export function shortErr(e: unknown): string {
+  const raw = e && typeof e === 'object' && 'message' in e ? String((e as Error).message) : String(e);
+  const msg = raw.replace(/^FirebaseError:\s*/i, '');
+  if (/unsupported field value: undefined/i.test(msg)) return 'a required value was missing – try again';
+  if (/permission-denied|missing or insufficient permissions/i.test(msg)) return 'sync was refused – check you’re signed in with the family account';
+  return msg.slice(0, 180);
+}

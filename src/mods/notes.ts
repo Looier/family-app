@@ -38,7 +38,8 @@ export const notes: Module = {
     return false;
   },
   submit: async f => {
-    await S.save<Note>('notes', { ...(edit as Note), title: val(f, 'title'), text: val(f, 'text'), pinned: !!(f.elements.namedItem('pinned') as HTMLInputElement)?.checked });
+    const title = val(f, 'title'); if (!title) { S.bus.toast('Please enter a name', 'err'); return; }
+    await S.save<Note>('notes', { ...(edit as Note), title, text: val(f, 'text'), pinned: !!(f.elements.namedItem('pinned') as HTMLInputElement)?.checked });
     edit = null; S.bus.toast('Note saved ✓'); r();
   },
 };

@@ -274,7 +274,7 @@ export const shopping: Module = {
   },
   submit: async f => {
     if (f.dataset.form === 'shopadd') {
-      const name = val(f, 'name'); if (!name) return;
+      const name = val(f, 'name'); if (!name) { S.bus.toast('Please enter a name', 'err'); return; }
       const qty = (document.getElementById('q-qty') as HTMLInputElement | null)?.value.trim() ?? '';
       const note = (document.getElementById('q-note') as HTMLInputElement | null)?.value.trim() ?? '';
       const lid = cur()?.id; if (!lid) return;

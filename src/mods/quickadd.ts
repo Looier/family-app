@@ -7,7 +7,7 @@ import { tlists } from './todos';
 import type { Todo } from './todos';
 import type { Ev } from './calendar';
 import type { Note } from './notes';
-import type { Wish } from './wishes';
+import { defaultWishWho, type Wish } from './wishes';
 
 export type QAType = 'shop' | 'todo' | 'event' | 'note' | 'wish';
 const TYPES: [QAType, string][] = [
@@ -51,7 +51,7 @@ export function qaSheet() {
     fields = `<input name="title" required placeholder="Note title" autocomplete="off" enterkeyhint="done" autofocus>
     <textarea name="text" rows="3" placeholder="A few words (optional)"></textarea>`;
   } else {
-    const who = last('qaLastWishWho', members()[0]?.name || 'Phoebe');
+    const who = last('qaLastWishWho', defaultWishWho());
     const occ = last('qaLastOcc', 'Anytime');
     fields = `<input name="title" required placeholder="What would they like?" autocomplete="off" enterkeyhint="done" autofocus>
     <h3>Whose list?</h3>
@@ -60,7 +60,7 @@ export function qaSheet() {
     <div class="radios">${OCC.map(o => `<label class="rad"><input type="radio" name="occasion" value="${o}" ${o === occ ? 'checked' : ''}><span>${o}</span></label>`).join('')}</div>`;
   }
   return `<div class="moreback" data-qaclose></div>
-  <form class="sheet qasheet" data-form="qa">
+  <form class="sheet qasheet" data-form="qa" novalidate>
     <header><h2>Quick add</h2><button type="button" class="gear" data-qaclose aria-label="Close">✕</button></header>
     <div class="qatypes">${TYPES.map(([k, l]) => `<button type="button" class="chip ${k === kind ? 'sel' : ''}" data-qakind="${k}">${l}</button>`).join('')}</div>
     ${fields}
@@ -82,26 +82,30 @@ export async function qaClick(b: HTMLElement) {
 }
 
 export async function qaSubmit(f: HTMLFormElement) {
-  const title = val(f, 'title').trim(); if (!title) return;
+  const title = val(f, 'title').trim();
+  if (!title) { S.bus.toast('Please enter a name', 'err'); return; }
   if (kind === 'shop') {
     const gid = val(f, 'groupId') || lastShopGroup();
     if (gid) setLastShopGroup(gid);
     const n = await addItems([{ name: title, qty: '' }], undefined, gid);
-    S.bus.toast(n ? 'Added to shopping ✓' : 'Could not add');
+    S.bus.toast(n ? 'Added to shopping ✓' : 'Could not add', n ? 'ok' : 'err');
   } else if (kind === 'todo') {
     const who = val(f, 'who') || 'Unassigned';
+    const listId = tlists()[0]?.id;
+    if (!listId) { S.bus.toast('No to-do list yet – try again in a moment', 'err'); return; }
     setLast('qaLastWho', who);
-    await S.save<Todo>('todos', { listId: tlists()[0]?.id, title, who, due: '', done: false, repeat: 'none' } as Todo);
+    await S.save<Todo>('todos', { listId, title, who, due: '', done: false, repeat: 'none' } as Todo);
     S.bus.toast('To-do added ✓');
   } else if (kind === 'event') {
     const time = val(f, 'time'); const date = val(f, 'date') || todayStr();
+    if (!date) { S.bus.toast('Please pick a date', 'err'); return; }
     await S.save<Ev>('events', { title, date, allDay: !time, time: time || '', who: 'Family', repeat: 'none', notes: '' } as Ev);
     S.bus.toast('Event added ✓');
   } else if (kind === 'note') {
     await S.save<Note>('notes', { title, text: val(f, 'text'), pinned: false } as Note);
     S.bus.toast('Note saved ✓');
   } else {
-    const who = val(f, 'who') || members()[0]?.name;
+    const who = val(f, 'who') || defaultWishWho();
     const occasion = val(f, 'occasion') || 'Anytime';
     setLast('qaLastWishWho', who); setLast('qaLastOcc', occasion);
     await S.save<Wish>('wishes', { who, name: title, occasion, priority: 'med' } as Wish);

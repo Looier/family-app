@@ -44,7 +44,7 @@ h2{font-size:20px;margin:12px 0}h3{font-size:16px;margin:16px 0 8px}h3 small{col
 .cal .fl{position:absolute;bottom:2px;right:3px;font-size:9px;font-weight:700;letter-spacing:-.5px;color:#5a2d00}
 @media (prefers-color-scheme:dark){.cal button[style*="hsl"]{color:#111}}
 .legend.wrap{margin-top:6px}.tabs button{min-width:0;padding:0 4px}
-#toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);opacity:0;background:#2d3142;color:#fff;padding:12px 20px;border-radius:99px;transition:.25s;pointer-events:none;z-index:9}#toast.show{opacity:1;transform:translateX(-50%)}
+#toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);opacity:0;background:#2d3142;color:#fff;padding:12px 20px;border-radius:99px;transition:.25s;pointer-events:none;z-index:9;max-width:min(92vw,420px);text-align:center;font-weight:700}#toast.show{opacity:1;transform:translateX(-50%)}#toast.err{background:#8b3a3a}
 /* ---- v2 modules ---- */
 .modules{display:flex;overflow-x:auto;gap:4px}
 .mod{flex:1 0 auto;min-width:56px;min-height:52px;display:flex;flex-direction:column;align-items:center;font-size:.75rem;opacity:.65}

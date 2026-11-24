@@ -80,7 +80,8 @@ export const calendar: Module = {
   },
   submit: async f => {
     const time = val(f, 'time'); const allDay = checked(f, 'allDay') || !time;
-    await S.save<Ev>('events', { ...(edit as Ev), title: val(f, 'title'), date: val(f, 'date'), allDay, time: allDay ? '' : time, who: val(f, 'who') || 'Family', repeat: (val(f, 'repeat') || 'none') as Ev['repeat'], notes: val(f, 'notes') });
+    const title = val(f, 'title'); if (!title) { S.bus.toast('Please enter a name', 'err'); return; }
+    await S.save<Ev>('events', { ...(edit as Ev), title, date: val(f, 'date'), allDay, time: allDay ? '' : time, who: val(f, 'who') || 'Family', repeat: (val(f, 'repeat') || 'none') as Ev['repeat'], notes: val(f, 'notes') });
     selDay = val(f, 'date'); edit = null; S.bus.toast('Event saved ✓'); S.bus.rerender();
   },
   change: t => { if (t.name === 'time' && t.value) { const c = t.form?.elements.namedItem('allDay') as HTMLInputElement; if (c) c.checked = false; } return false; },
