@@ -63,7 +63,22 @@ export async function removeMember(id: string) {
 }
 
 export function memberChips(cur: string, attr = 'child') {
-  return `<div class="kids scrollx">${members().map(m => `<button data-${attr}="${esc(m.name)}" class="kid ${m.name === cur ? 'sel' : ''}" style="--pc:${m.color}">${avatar(m.name)}${esc(m.name)}${m.kind === 'kid' ? '<small>kid</small>' : ''}</button>`).join('')}</div>`;
+  return healthChips(cur, attr);
+}
+
+/** Big, colour-coded person switcher for health logs. Selected chip uses the person’s colour and a check; others are dimmed. */
+export function healthChips(cur: string, attr = 'child') {
+  const list = members();
+  return `<div class="kids who-seg" role="tablist" aria-label="Who are you logging for">${list.map(m => {
+    const sel = m.name === cur;
+    return `<button type="button" role="tab" aria-selected="${sel}" data-${attr}="${esc(m.name)}" class="kid ${sel ? 'sel' : ''}" style="--pc:${m.color}">${avatar(m.name)}<span class="kname">${esc(m.name)}${m.kind === 'kid' ? '<small>Child</small>' : ''}</span>${sel ? '<span class="kcheck" aria-hidden="true">✓</span>' : ''}</button>`;
+  }).join('')}</div>`;
+}
+
+/** Only Thinus and Juazel (adults) sign in / pick “Who am I”. Children are family members, not app users. */
+export function appUsers() {
+  const a = adults();
+  return a.length ? a : members();
 }
 
 export const OWNERS = ['Thinus', 'Juazel', 'Both', 'Unassigned'] as const;
@@ -93,11 +108,11 @@ export function settingsView(syncHtml: string, me: string) {
   const list = members();
   return `<h2>Settings</h2>
   <div class="card"><h3>Who am I on this phone?</h3>
-    <p class="muted">Used for “Mine” on to-dos, and so a bought gift stays hidden on that person’s phone. Stored only on this device.</p>
-    <div class="mephone">${list.map(p => `<button class="chip mechip ${me === p.name ? 'sel' : ''}" data-me="${esc(p.name)}">${avatar(p.name)}${esc(p.name)}</button>`).join('')}</div>
+    <p class="muted">This is your phone — only Thinus and Juazel sign in and use the app. The children are not app users; they appear on the family list so you can log their health and plan the week. Stored only on this device. Used for “Mine” on to-dos, and so a bought gift stays hidden on this phone.</p>
+    <div class="mephone">${appUsers().map(p => `<button class="chip mechip ${me === p.name ? 'sel' : ''}" data-me="${esc(p.name)}">${avatar(p.name)}${esc(p.name)}</button>`).join('')}</div>
   </div>
   <div class="card"><h3>Family members</h3>
-    <p class="muted">Health tracking, the calendar and the weekly plan use this list. You can add kids or adults, or rename someone. Removing a person hides them from the switcher but keeps their old health entries.</p>
+    <p class="muted">Health tracking, the calendar and the weekly plan use this list. Phoebe and Jocelyn are children you log health for — they don’t have their own sign-in. You can add children or adults, or rename someone. Removing a person hides them from the switcher but keeps their old health entries.</p>
     <ul class="editlist members">${list.map(m => `<li>
       ${avatar(m.name)}<span class="iname static"><b>${esc(m.name)}</b><small>${m.kind === 'kid' ? 'Child' : 'Adult'}</small></span>
       <button class="tog" data-renmem="${m.id}">Rename</button>

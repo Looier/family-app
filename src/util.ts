@@ -4,6 +4,8 @@ export const todayStr = () => iso(new Date());
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 export const addDays = (s: string, n: number) => { const d = new Date(s + 'T12:00'); d.setDate(d.getDate() + n); return iso(d); };
 export const fmt = (s: string, o: Intl.DateTimeFormatOptions) => new Date(s + 'T12:00').toLocaleDateString('en-ZA', o);
+/** e.g. Mon 24 Nov */
+export const shortDay = (s: string) => fmt(s, { weekday: 'short', day: 'numeric', month: 'short' }).replace(/,/g, '');
 export const mondayOf = (s: string) => { const d = new Date(s + 'T12:00'); return addDays(s, -((d.getDay() + 6) % 7)); };
 export const PEOPLE = ['Family', 'Thinus', 'Juazel', 'Phoebe', 'Jocelyn'] as const;
 export type Person = typeof PEOPLE[number];

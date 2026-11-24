@@ -1,4 +1,6 @@
 import type { HealthEntry } from './types';
+import { isPainOn } from './types';
+import { kids } from './mods/members';
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const iso = (d: Date) => { const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 10); };
 const fmt = (s: string, o: Intl.DateTimeFormatOptions) => new Date(s + 'T12:00').toLocaleDateString('en-ZA', o);
@@ -7,9 +9,9 @@ const time = (ts: number) => new Date(ts).toLocaleTimeString('en-ZA', { hour: '2
 function entryCard(e: HealthEntry) {
   const bits: string[] = [];
   if (e.mood !== null) bits.push(`<span class="pill mood">Mood ${e.mood}</span>`);
-  bits.push(e.pain == null ? '<span class="pill">Pain: not reported</span>' : `<span class="pill pain">Pain ${e.pain}</span>`);
+  if (isPainOn(e)) bits.push(`<span class="pill pain">Pain${e.pain != null && e.pain > 0 ? ' ' + e.pain : ''}</span>`);
   if (e.sleep) bits.push(`<span class="pill sleep">Sleep: ${esc(e.sleep)}</span>`);
-  if (e.tired) bits.push('<span class="pill">Tired</span>');
+  if (e.tired) bits.push('<span class="pill">Fatigue</span>');
   if (e.emotional) bits.push('<span class="pill">Emotional</span>');
   if (e.nauseous) bits.push('<span class="pill">Nauseous</span>');
   if (e.tummy) bits.push('<span class="pill">Tummy ache</span>');
@@ -23,7 +25,7 @@ function entryCard(e: HealthEntry) {
   const meds = (e.medDoses && e.medDoses.length) ? e.medDoses.map(m => [m.name, m.dose, m.time].filter(Boolean).join(' ')).join(', ') : e.meds.join(', ');
   return `<div class="card entry"><div class="ehead"><b>${time(e.ts)}</b>${e.author ? `<small>${esc(e.author.split('@')[0])}</small>` : ''}<button class="del" data-del="${e.id}" aria-label="Delete">✕</button></div>
   <div>${bits.join(' ')}</div>
-  ${e.painLocs.length ? `<p>📍 ${esc(e.painLocs.join(', '))}</p>` : ''}
+  ${isPainOn(e) && (e.painLocs.length || e.painDetail) ? `<p>📍 ${esc([...e.painLocs, e.painDetail].filter(Boolean).join(', '))}</p>` : ''}
   ${meds ? `<p>💊 ${esc(meds)}</p>` : ''}
   ${e.notes ? `<p class="note">${esc(e.notes)}</p>` : ''}</div>`;
 }
@@ -55,10 +57,16 @@ function bars(rows: [string, number][], unit: string) {
   const mx = Math.max(...rows.map(r => r[1]));
   return rows.map(([k, n]) => `<div class="bar"><span>${esc(k)}</span><div><i style="width:${(n / mx) * 100}%"></i></div><b>${n}${unit}</b></div>`).join('');
 }
-export function renderWeek(all: HealthEntry[], offset: number, today: string) {
+export function renderWeek(all: HealthEntry[], offset: number, today: string, family?: HealthEntry[]) {
   const end = new Date(today + 'T12:00'); end.setDate(end.getDate() + offset * 7);
   const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(end); d.setDate(d.getDate() - 6 + i); return iso(d); });
   const wk = all.filter(e => e.date >= days[0] && e.date <= days[6]);
+  const fam = (family ?? all).filter(e => e.date >= days[0] && e.date <= days[6]);
+  const kidList = kids();
+  const marks = `<div class="weekmarks" aria-label="Days logged for each child">${days.map(d => {
+    const dots = kidList.map(k => fam.some(e => e.date === d && e.child === k.name) ? `<i class="dot" style="--pc:${k.color}" title="${k.name} logged"></i>` : '').join('');
+    return `<button type="button" class="wmark ${d === today ? 'today' : ''}" data-mday="${d}"><span class="wd">${fmt(d, { weekday: 'short' }).slice(0, 2)}</span><span class="wdn">${fmt(d, { day: 'numeric' })}</span><span class="wdots">${dots || '<i class="dot empty"></i>'}</span></button>`;
+  }).join('')}</div><p class="muted tiny">A coloured dot means that child has an entry that day.</p>`;
   const by = (d: string) => wk.filter(e => e.date === d);
   const avg = (xs: number[]) => xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length * 10) / 10 : null;
   const mood = days.map(d => avg(by(d).flatMap(e => e.mood === null ? [] : [e.mood])));
@@ -66,17 +74,18 @@ export function renderWeek(all: HealthEntry[], offset: number, today: string) {
   const SL: Record<string, [number, string]> = { 'Good': [1, 'ok'], 'Woke up once': [2, 'w1'], 'Woke up multiple times': [3, 'w2'], 'Woke up with pain': [4, 'wp'] };
   const sleepStrip = `<div class="strip">${days.map(d => { const w = by(d).map(e => e.sleep).filter(Boolean).sort((a, b) => SL[b!][0] - SL[a!][0])[0]; return `<span class="${w ? 'sl-' + SL[w][1] : ''}" title="${w ?? ''}">${fmt(d, { weekday: 'short' }).slice(0, 2)}<br>${w ? ['', '😴', '1×', '2+', '🤕'][SL[w][0]] : '–'}</span>`; }).join('')}</div><div class="legend"><small>😴 good · 1× woke once · 2+ woke often · 🤕 woke with pain (worst of the day)</small></div>`;
   const dayFlag = (f: (e: HealthEntry) => boolean) => days.filter(d => by(d).some(f));
-  const rashDays = dayFlag(e => e.rash), conDays = dayFlag(e => e.constipated), tiredDays = dayFlag(e => !!e.tired), emoDays = dayFlag(e => !!e.emotional), nauDays = dayFlag(e => !!e.nauseous);
+  const rashDays = dayFlag(e => e.rash), conDays = dayFlag(e => e.constipated), tiredDays = dayFlag(e => !!e.tired), emoDays = dayFlag(e => !!e.emotional), nauDays = dayFlag(e => !!e.nauseous), painDays = dayFlag(e => isPainOn(e));
   const feverDays = dayFlag(e => !!e.fever || (e.temp != null && e.temp >= 38)), tumDays = dayFlag(e => !!e.tummy), coughDays = dayFlag(e => !!e.cough || !!e.runnyNose), appDays = dayFlag(e => e.appetite === 'poor' || e.appetite === 'none');
   const naDays = days.filter(d => by(d).length && by(d).every(e => e.pain == null)).length;
   const strip = (sel: string[]) => `<div class="strip">${days.map(d => `<span class="${sel.includes(d) ? 'on' : ''}">${fmt(d, { weekday: 'short' }).slice(0, 2)}</span>`).join('')}</div>`;
   const label = `${fmt(days[0], { day: 'numeric', month: 'short' })} – ${fmt(days[6], { day: 'numeric', month: 'short' })}`;
   return `<div class="pager"><button data-wk="-1">‹</button><b>${label}</b><button data-wk="1" ${offset >= 0 ? 'disabled' : ''}>›</button></div>
+  <div class="card">${marks}</div>
   <div class="card">${chart(naDays ? ` · pain not reported ${naDays}d` : '', days, [{ vals: mood, color: '#3fa37a', label: 'Mood', min: 1, max: 10 }, { vals: pain, color: '#e0645c', label: 'Pain', min: 0, max: 10 }])}</div>
   <div class="card"><h3>Sleep</h3>${sleepStrip}</div>
-  <div class="card"><h3>Fever (${feverDays.length})</h3>${strip(feverDays)}<h3>Tummy ache (${tumDays.length})</h3>${strip(tumDays)}<h3>Cough / runny nose (${coughDays.length})</h3>${strip(coughDays)}<h3>Low appetite (${appDays.length})</h3>${strip(appDays)}<h3>Rash days (${rashDays.length})</h3>${strip(rashDays)}<h3>Constipated days (${conDays.length})</h3>${strip(conDays)}<h3>Tired days (${tiredDays.length})</h3>${strip(tiredDays)}<h3>Emotional days (${emoDays.length})</h3>${strip(emoDays)}<h3>Nauseous days (${nauDays.length})</h3>${strip(nauDays)}</div>
+  <div class="card"><h3>Fever (${feverDays.length})</h3>${strip(feverDays)}<h3>Tummy ache (${tumDays.length})</h3>${strip(tumDays)}<h3>Cough / runny nose (${coughDays.length})</h3>${strip(coughDays)}<h3>Low appetite (${appDays.length})</h3>${strip(appDays)}<h3>Rash days (${rashDays.length})</h3>${strip(rashDays)}<h3>Constipated days (${conDays.length})</h3>${strip(conDays)}<h3>Fatigue days (${tiredDays.length})</h3>${strip(tiredDays)}<h3>Pain days (${painDays.length})</h3>${strip(painDays)}<h3>Emotional days (${emoDays.length})</h3>${strip(emoDays)}<h3>Nauseous days (${nauDays.length})</h3>${strip(nauDays)}</div>
   <div class="card"><h3>Meds given</h3>${bars(tally(wk.flatMap(e => (e.medDoses && e.medDoses.length) ? e.medDoses.map(m => m.name) : e.meds)), '×')}</div>
-  <div class="card"><h3>Where it hurt</h3>${bars(tally(wk.flatMap(e => e.painLocs)), '×')}</div>
+  <div class="card"><h3>Where it hurt</h3>${bars(tally(wk.flatMap(e => [...(e.painLocs || []), e.painDetail || ''].filter(Boolean))), '×')}</div>
   <p class="empty">${wk.length} entries this week</p>`;
 }
 
@@ -110,14 +119,14 @@ export function renderMonth(all: HealthEntry[], offset: number, today: string) {
   let grid = `<div class="cal">${['Mo','Tu','We','Th','Fr','Sa','Su'].map(x => `<b>${x}</b>`).join('')}${'<span></span>'.repeat(lead)}`;
   days.forEach((d, i) => {
     const es = by(d); const sl = Math.max(0, ...es.map(e => SEV[e.sleep ?? ''] ?? 0));
-    const fl = [es.some(e => e.fever || (e.temp != null && e.temp >= 38)) && 'F', es.some(e => e.tummy) && 'U', es.some(e => e.cough || e.runnyNose) && 'K', es.some(e => e.rash) && 'R', es.some(e => e.constipated) && 'C', es.some(e => e.tired) && 'T', es.some(e => e.emotional) && 'E', es.some(e => e.nauseous) && 'N'].filter(Boolean).join('');
+    const fl = [es.some(e => e.fever || (e.temp != null && e.temp >= 38)) && 'F', es.some(e => e.tummy) && 'U', es.some(e => e.cough || e.runnyNose) && 'K', es.some(e => e.rash) && 'R', es.some(e => e.constipated) && 'C', es.some(e => e.tired) && 'G', es.some(e => isPainOn(e)) && 'P', es.some(e => e.emotional) && 'E', es.some(e => e.nauseous) && 'N'].filter(Boolean).join('');
     grid += `<button data-mday="${d}" class="${d === today ? 'today' : ''}" ${d > today ? 'disabled' : ''} style="background:${es.length ? painBg(pain[i]) : 'var(--card)'}">
       <span class="dn">${i + 1}</span>${mood[i] !== null ? `<span class="mm">☺${Math.round(mood[i]!)}</span>` : ''}
       ${sl ? `<i class="sd" style="background:${SLEEP_COL[sl]}"></i>` : ''}${fl ? `<span class="fl">${fl}</span>` : ''}</button>`;
   });
-  grid += '</div><div class="legend wrap"><small>Colour = avg pain (green 0 → red 10) · ☺ mood · dot = sleep · F fever U tummy K cough/nose R rash C constipated T tired E emotional N nauseous</small></div>';
+  grid += '</div><div class="legend wrap"><small>Colour = avg pain (green 0 → red 10) · ☺ mood · dot = sleep · F fever U tummy K cough/nose R rash C constipated G fatigue P pain E emotional N nauseous</small></div>';
   const count = (f: (e: HealthEntry) => boolean) => days.filter(d => by(d).some(f)).length;
-  const ticks: [string, number][] = [['Fever', count(e => !!e.fever || (e.temp != null && e.temp >= 38))], ['Tummy ache', count(e => !!e.tummy)], ['Cough / runny nose', count(e => !!e.cough || !!e.runnyNose)], ['Low appetite', count(e => e.appetite === 'poor' || e.appetite === 'none')], ['Rash', count(e => e.rash)], ['Constipated', count(e => e.constipated)], ['Tired', count(e => !!e.tired)], ['Emotional', count(e => !!e.emotional)], ['Nauseous', count(e => !!e.nauseous)]];
+  const ticks: [string, number][] = [['Fever', count(e => !!e.fever || (e.temp != null && e.temp >= 38))], ['Tummy ache', count(e => !!e.tummy)], ['Cough / runny nose', count(e => !!e.cough || !!e.runnyNose)], ['Low appetite', count(e => e.appetite === 'poor' || e.appetite === 'none')], ['Rash', count(e => e.rash)], ['Constipated', count(e => e.constipated)], ['Fatigue', count(e => !!e.tired)], ['Pain', count(e => isPainOn(e))], ['Emotional', count(e => !!e.emotional)], ['Nauseous', count(e => !!e.nauseous)]];
   const sleeps: [string, number][] = Object.keys(SEV).map(k => [k, mo.filter(e => e.sleep === k).length]);
   const label = first.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
   return `<div class="pager"><button data-mo="-1">‹</button><b>${label}</b><button data-mo="1" ${offset >= 0 ? 'disabled' : ''}>›</button></div>
@@ -126,6 +135,6 @@ export function renderMonth(all: HealthEntry[], offset: number, today: string) {
   <div class="card"><h3>Days with…</h3>${bars(ticks.filter(x => x[1]), 'd')}</div>
   <div class="card"><h3>Sleep (nights logged)</h3>${bars(sleeps.filter(x => x[1]), '×')}</div>
   <div class="card"><h3>Meds given</h3>${bars(tally(mo.flatMap(e => (e.medDoses && e.medDoses.length) ? e.medDoses.map(m => m.name) : e.meds)), '×')}</div>
-  <div class="card"><h3>Where it hurt</h3>${bars(tally(mo.flatMap(e => e.painLocs)), '×')}</div>
+  <div class="card"><h3>Where it hurt</h3>${bars(tally(mo.flatMap(e => [...(e.painLocs || []), e.painDetail || ''].filter(Boolean))), '×')}</div>
   <p class="empty">${mo.length} entries this month</p>`;
 }

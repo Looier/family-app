@@ -1,5 +1,5 @@
 import './style.css';
-import { BODY_LOCS, SLEEP_OPTS, APPETITE_OPTS, type Sleep, type HealthEntry, type MedList, type Appetite } from './types';
+import { PAIN_LOCS, SLEEP_OPTS, APPETITE_OPTS, isPainOn, painLocOptions, type Sleep, type HealthEntry, type MedList, type Appetite } from './types';
 import * as db from './db';
 import { loadAdapter, type SyncAdapter } from './sync';
 import { renderWeek, renderDay, renderMonth } from './views';
@@ -18,9 +18,9 @@ import { parse, boot, initRouter, syncFromUi, dismiss, isApplying, toHash, formS
 import { ensureTodoLists } from './mods/todos';
 import { homeView } from './mods/home';
 import { weekly, setPlanDate, onBlurField } from './mods/weekly';
-import { ensureMembers, memberChips, memberByName, members, kids, settingsView, settingsClick } from './mods/members';
+import { ensureMembers, healthChips, memberByName, members, kids, adults, appUsers, settingsView, settingsClick } from './mods/members';
 import { ensureStarterRecipes } from './mods/seeds';
-import { shortErr, stripUndefined } from './util';
+import { shortErr, stripUndefined, shortDay, addDays } from './util';
 type Mod = 'home' | 'health' | 'calendar' | 'meals' | 'todos' | 'shopping' | 'plan' | 'settings' | 'notes' | 'wishes';
 const MODS: Record<string, Module> = { calendar, meals, todos, shopping, plan: weekly, notes, wishes };
 let mod: Mod = 'home';
@@ -39,15 +39,75 @@ const st = {
   meds: { meds: [], updatedAt: 0 } as MedList, entries: [] as HealthEntry[],
   adapter: null as SyncAdapter | null, user: null as string | null, syncErr: '',
   form: null as unknown as HealthEntry,
+  pendingIds: [] as string[],
 };
-const blank = (): HealthEntry => ({
-  id: uid(), child: st.child, memberId: memberByName(st.child)?.id, date: todayStr(), ts: Date.now(),
-  mood: null, pain: 0, painLocs: [], sleep: null, tired: false, emotional: false, nauseous: false,
+let lastSaved: { child: string; date: string; id: string } | null = null;
+const blank = (date?: string): HealthEntry => ({
+  id: uid(), child: st.child, memberId: memberByName(st.child)?.id, date: date || st.dayDate || todayStr(), ts: Date.now(),
+  mood: null, pain: null, painLocs: [], hasPain: false, painDetail: '', sleep: null, tired: false, emotional: false, nauseous: false,
   rash: false, rashWhere: '', rashLocs: [], constipated: false, meds: [], notes: '', updatedAt: 0,
   fever: false, temp: null, tummy: false, cough: false, runnyNose: false, appetite: null, medDoses: [],
 });
 
-async function refresh() { st.entries = await db.allEntries(); st.meds = await db.getMeds(); }
+function matchesPerson(e: HealthEntry, name: string) {
+  const m = memberByName(name);
+  return e.child === name || (!!m && e.memberId === m.id);
+}
+
+/** Latest live entry for this person on this date. Keyed by person + date, not a shared id — one kid’s log never overwrites another’s. */
+function entryFor(name: string, date: string): HealthEntry | undefined {
+  return st.entries
+    .filter(e => !e.deleted && e.date === date && matchesPerson(e, name))
+    .sort((a, b) => (b.updatedAt || b.ts) - (a.updatedAt || a.ts))[0];
+}
+
+async function refresh() {
+  st.entries = await db.allEntries();
+  st.meds = await db.getMeds();
+  st.pendingIds = await pending();
+}
+
+function isEmptyEntry(f: HealthEntry) {
+  return f.mood === null && !isPainOn(f) && !f.meds.length && !(f.medDoses?.length)
+    && !f.rash && !f.constipated && !f.sleep && !f.tired && !f.emotional && !f.nauseous
+    && !f.fever && f.temp == null && !f.tummy && !f.cough && !f.runnyNose && !f.appetite
+    && !(f.notes || '').trim();
+}
+
+function loadFormFor(name: string, date: string) {
+  const d = date || todayStr();
+  st.child = name || st.child;
+  st.dayDate = d;
+  const ex = entryFor(st.child, d);
+  if (ex) st.form = { ...ex, medDoses: [...(ex.medDoses ?? [])], painLocs: [...(ex.painLocs ?? [])] };
+  else st.form = blank(d);
+  st.form.child = st.child;
+  st.form.memberId = memberByName(st.child)?.id;
+  st.form.date = d;
+  db.setKV('lastChild', st.child);
+}
+
+function syncStateHtml(e: HealthEntry) {
+  if (!e.updatedAt) return '';
+  if (!st.user) return `<span class="syncstate local">Saved on this phone · not synced</span>`;
+  if (st.pendingIds.includes(e.id)) return `<span class="syncstate pending">Saved · waiting to sync</span>`;
+  return `<span class="syncstate ok">Saved · synced</span>`;
+}
+
+function paintSyncState() {
+  const el = document.querySelector('.syncstate');
+  if (!el || !st.form?.updatedAt) return;
+  el.outerHTML = syncStateHtml(st.form);
+}
+
+function healthHead(kind: 'log' | 'day' | 'week' | 'month', date = st.dayDate) {
+  const who = st.child;
+  const title = kind === 'log' ? `Logging for ${who} — ${shortDay(date)}`
+    : kind === 'day' ? `Day log for ${who} — ${shortDay(date)}`
+    : kind === 'week' ? `Weekly log for ${who}`
+    : `Month log for ${who}`;
+  return `${healthChips(who)}<h2 class="logfor">${esc(title)}</h2>`;
+}
 
 async function pending(): Promise<string[]> { return (await db.getKV<string[]>('pending')) ?? []; }
 async function flush() {
@@ -59,15 +119,22 @@ async function flush() {
   }
   if (await db.getKV('medsPending')) { try { await a.pushMeds(st.meds); await db.setKV('medsPending', false); } catch (err) { st.syncErr = String(err); toast('Couldn’t sync: ' + shortErr(err), 'err'); } }
   await db.setKV('pending', left);
+  st.pendingIds = left;
+  paintSyncState();
 }
-async function saveEntry(e: HealthEntry) {
+async function saveEntry(e: HealthEntry): Promise<HealthEntry> {
   try {
+    if (!e.id) e.id = uid();
+    if (!e.date) e.date = st.dayDate || todayStr();
+    if (!e.child) e.child = st.child;
     e.updatedAt = Date.now(); e.author = st.user || undefined;
-    const clean = stripUndefined({ ...e });
+    const clean = stripUndefined({ ...e }) as HealthEntry;
     Object.assign(e, clean);
     await db.putEntry(clean);
-    const p = await pending(); if (!p.includes(e.id)) p.push(e.id); await db.setKV('pending', p);
+    const p = await pending(); if (!p.includes(clean.id)) p.push(clean.id); await db.setKV('pending', p);
+    st.pendingIds = p;
     flush();
+    return clean;
   } catch (err) {
     toast('Couldn’t save: ' + shortErr(err), 'err');
     throw err;
@@ -133,7 +200,7 @@ function fab(body: string) {
   if (moreOpen || qaOpen() || /class="sheet"/.test(body) || (mod === 'health' && st.tab === 'entry')) return '';
   return `<button class="fab" data-qaopen aria-label="Quick add">${icon('plus')}</button>`;
 }
-function childPick() { return memberChips(st.child); }
+function childPick() { return healthChips(st.child); }
 function scale(name: string, from: number, to: number, val: number | null) {
   let h = `<div class="scale ${name}">`; for (let i = from; i <= to; i++) h += `<button data-${name}="${i}" class="${val === i ? 'sel' : ''}" style="--i:${(i - from) / (to - from)}">${name === 'mood' ? `<span class="face">${MOOD_FACE[i - 1]}</span>` : ''}${i}</button>`; return h + '</div>';
 }
@@ -145,12 +212,31 @@ function entryView() {
   const doses = f.medDoses;
   const on = (k: keyof HealthEntry) => !!(f as unknown as Record<string, unknown>)[k as string];
   const tog = (id: string, k: keyof HealthEntry, l: string) => `<button id="${id}" class="tog ${on(k) ? 'sel' : ''}">${on(k) ? '☑' : '☐'} ${l}</button>`;
-  return `${childPick()}
-  <label class="row">Date <input type="date" id="date" value="${f.date}" max="${todayStr()}"></label>
+  const editing = !!f.updatedAt;
+  const savedNote = (lastSaved && lastSaved.id === f.id)
+    ? `<div class="savedbanner" data-testid="save-confirm">Saved for ${esc(lastSaved.child)}, ${esc(shortDay(lastSaved.date))} ✓ ${syncStateHtml(f)}</div>`
+    : (editing ? `<div class="savedbanner quiet">${syncStateHtml(f)}</div>` : '');
+  const painOn = isPainOn(f);
+  const today = todayStr();
+  const saveLbl = (editing ? 'Save changes' : 'Save entry') + ' for ' + st.child + ', ' + shortDay(f.date);
+  return `${healthHead('log', f.date)}
+  <div class="pager daypager">
+    <button type="button" data-edate="-1" aria-label="Previous day">‹</button>
+    <input type="date" id="date" value="${f.date}" max="${today}" aria-label="Date">
+    <button type="button" data-edate="1" ${f.date >= today ? 'disabled' : ''} aria-label="Next day">›</button>
+  </div>
+  ${savedNote}
+  ${editing ? '<p class="editing" data-testid="editing-label">Editing saved entry</p>' : ''}
   <h3>Mood <small>1 = awful · 10 = great</small></h3>${scale('mood', 1, 10, f.mood)}
-  <h3>Pain <small>0 = none</small></h3>${scale('pain', 0, 10, f.pain)}<button data-pain="na" class="chip na ${f.pain === null ? 'sel' : ''}">Nothing reported</button>
-  ${(f.pain ?? 0) > 0 ? `<h3>Where does it hurt?</h3>${chips('ploc', BODY_LOCS, f.painLocs)}` : ''}
-  <div class="toggles grid tight">${tog('fever', 'fever', 'Fever')}${tog('tummy', 'tummy', 'Tummy ache')}${tog('cough', 'cough', 'Cough')}</div>
+  <div class="toggles grid tight">${tog('tired', 'tired', 'Fatigue')}<button type="button" id="painflag" class="tog ${painOn ? 'sel' : ''}">${painOn ? '☑' : '☐'} Pain</button>${tog('fever', 'fever', 'Fever')}${tog('tummy', 'tummy', 'Tummy ache')}${tog('cough', 'cough', 'Cough')}</div>
+  ${painOn ? `<div class="painbox">
+    <h3>Where does it hurt? <small>optional</small></h3>
+    ${chips('ploc', painLocOptions(f.painLocs), f.painLocs)}
+    <input id="painDetail" placeholder="More detail (e.g. knee, not sure which)" value="${esc(f.painDetail || "")}" autocomplete="off">
+    <h3>Pain severity <small>optional</small></h3>
+    ${scale('pain', 0, 10, f.pain)}
+    <button data-pain="na" class="chip na ${f.pain === null ? 'sel' : ''}">No severity given</button>
+  </div>` : ''}
   ${doses.length ? `<h3>Medicine</h3>${doses.map((x, i) => `<div class="medrow"><b>${esc(x.name)}</b><input data-mdose="${i}" placeholder="Dose (e.g. 5 ml)" value="${esc(x.dose)}"><input type="time" data-mtime="${i}" value="${esc(x.time)}"><button type="button" class="del" data-mdel="${i}" aria-label="Remove">✕</button></div>`).join('')}` : ''}
   <h3>Notes</h3><textarea id="notes" rows="2" placeholder="Anything else…">${esc(f.notes)}</textarea>
   <button type="button" class="link morebtn" data-hmore>${healthMore ? 'Less' : 'More details'}</button>
@@ -158,14 +244,14 @@ function entryView() {
     <h3>Sleep <small>optional</small></h3><div class="chips">${SLEEP_OPTS.map(o => `<button data-sleep="${o}" class="chip ${f.sleep === o ? 'sel' : ''}">${f.sleep === o ? '◉' : '○'} ${o}</button>`).join('')}</div>
     <h3>Temperature</h3>
     <div class="row temp"><input id="temp" type="number" inputmode="decimal" step="0.1" min="34" max="42" placeholder="e.g. 38.2" value="${f.temp ?? ''}"><span>°C</span></div>
-    <div class="toggles grid">${tog('naus', 'nauseous', 'Nausea')}${tog('rash', 'rash', 'Rash')}${tog('nose', 'runnyNose', 'Runny nose')}${tog('tired', 'tired', 'Tired')}${tog('emo', 'emotional', 'Emotional')}${tog('const', 'constipated', 'Constipated')}</div>
+    <div class="toggles grid">${tog('naus', 'nauseous', 'Nausea')}${tog('rash', 'rash', 'Rash')}${tog('nose', 'runnyNose', 'Runny nose')}${tog('emo', 'emotional', 'Emotional')}${tog('const', 'constipated', 'Constipated')}</div>
     <h3>Appetite</h3><div class="chips">${APPETITE_OPTS.map(o => `<button data-appetite="${o.id}" class="chip ${f.appetite === o.id ? 'sel' : ''}">${o.label}</button>`).join('')}</div>
     <h3>Medicine given</h3>
     ${doses.length ? '' : doses.map((x, i) => `<div class="medrow"><b>${esc(x.name)}</b><input data-mdose="${i}" placeholder="Dose (e.g. 5 ml)" value="${esc(x.dose)}"><input type="time" data-mtime="${i}" value="${esc(x.time)}"><button type="button" class="del" data-mdel="${i}" aria-label="Remove">✕</button></div>`).join('')}
     ${chips('med', st.meds.meds, doses.map(x => x.name))}
     <button id="addMed" class="chip add">＋ Add med</button>
   </div>
-  <button id="save" class="save sticky-save">Save entry for ${esc(st.child)}</button>`;
+  <button id="save" class="save sticky-save">${esc(saveLbl)}</button>`;
 }
 function syncView() {
   const a = st.adapter;
@@ -178,7 +264,7 @@ function syncView() {
   ${st.syncErr ? `<p class="err">${esc(st.syncErr)}</p>` : ''}</div>`;
 }
 function mePick() {
-  return `<div class="mephone"><small>This phone is</small>${members().map(p => `<button class="chip mechip ${S.bus.me === p.name ? 'sel' : ''}" data-me="${esc(p.name)}">${avatar(p.name)}${esc(p.name)}</button>`).join('')}</div>`;
+  return `<div class="mephone"><small>This phone is</small>${appUsers().map(p => `<button class="chip mechip ${S.bus.me === p.name ? 'sel' : ''}" data-me="${esc(p.name)}">${avatar(p.name)}${esc(p.name)}</button>`).join('')}</div>`;
 }
 const VALID_MODS: Mod[] = ['home', 'health', 'calendar', 'meals', 'todos', 'shopping', 'plan', 'settings', 'notes', 'wishes'];
 function snapshot(): Route {
@@ -221,9 +307,9 @@ function render() {
   else if (mod === 'settings' || (mod === 'health' && st.tab === 'sync')) body = settingsView(syncView(), S.bus.me);
   else if (mod !== 'health') body = MODS[mod].render();
   else if (st.tab === 'entry') body = entryView();
-  else if (st.tab === 'day') body = childPick() + renderDay(st.entries.filter(e => e.child === st.child && e.date === st.dayDate), st.dayDate, todayStr());
-  else if (st.tab === 'week') body = childPick() + renderWeek(st.entries.filter(e => e.child === st.child), st.weekOffset, todayStr());
-  else if (st.tab === 'month') body = childPick() + renderMonth(st.entries.filter(e => e.child === st.child), st.monthOffset, todayStr());
+  else if (st.tab === 'day') body = healthHead('day', st.dayDate) + renderDay(st.entries.filter(e => matchesPerson(e, st.child) && e.date === st.dayDate), st.dayDate, todayStr());
+  else if (st.tab === 'week') body = healthHead('week') + renderWeek(st.entries.filter(e => matchesPerson(e, st.child)), st.weekOffset, todayStr(), st.entries);
+  else if (st.tab === 'month') body = healthHead('month') + renderMonth(st.entries.filter(e => matchesPerson(e, st.child)), st.monthOffset, todayStr());
   $app.innerHTML = `${banner()}${subtabs()}<main class="m-${mod}">${body}</main>${fab(body)}${bnav()}${moreSheet()}${qaSheet()}<div id="toast"></div>`;
   capturePristine();
   if (pendingToast) queueMicrotask(paintToast);
@@ -241,10 +327,8 @@ function paintToast() {
 function toast(msg: string, kind: ToastKind = 'ok') { pendingToast = { msg, kind }; paintToast(); }
 const toggle = (arr: string[], v: string) => arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v];
 function setChild(name: string) {
-  st.child = name || st.child;
-  st.form.child = st.child;
-  st.form.memberId = memberByName(st.child)?.id;
-  db.setKV('lastChild', st.child);
+  const date = (st.tab === 'entry' ? st.form?.date : st.dayDate) || todayStr();
+  loadFormFor(name, date);
 }
 
 // swipe right on a list item to tick it; swipe plan-mode days
@@ -286,8 +370,9 @@ $app.addEventListener('focusout', async ev => {
 $app.addEventListener('input', e => {
   const t = e.target as HTMLInputElement; const f = st.form;
   if (t.id === 'notes') f.notes = t.value;
-  if (t.id === 'date') f.date = t.value || todayStr();
-  if (t.id === 'dayDate') { st.dayDate = t.value || todayStr(); render(); }
+  if (t.id === 'painDetail') f.painDetail = t.value;
+  if (t.id === 'date') { loadFormFor(st.child, t.value || todayStr()); render(); return; }
+  if (t.id === 'dayDate') { st.dayDate = t.value || todayStr(); loadFormFor(st.child, st.dayDate); render(); }
   if (t.id === 'temp') { const n = t.value === '' ? null : parseFloat(t.value); f.temp = n; if (n != null && n >= 38) f.fever = true; }
   if (t.dataset.mdose) { const i = +t.dataset.mdose; if (f.medDoses?.[i]) f.medDoses[i].dose = t.value; }
   if (t.dataset.mtime) { const i = +t.dataset.mtime; if (f.medDoses?.[i]) f.medDoses[i].time = t.value; }
@@ -316,13 +401,15 @@ $app.addEventListener('click', async ev => {
   if (mod === 'home') { if (d.ev) { mod = 'calendar'; await calendar.click(b); return; } if (d.tt) { await todos.click(b); return; } if (d.tedit) { mod = 'todos'; await todos.click(b); return; } }
   else if (mod !== 'health' && mod !== 'settings') { try { await MODS[mod].click(b); } catch (e) { toast('Couldn’t save: ' + shortErr(e), 'err'); } return; }
   if (d.go) { st.tab = d.go as Tab; return render(); }
-  if (d.tab) { st.tab = d.tab as Tab; if (st.tab === 'sync') { /* settings */ } else if (st.tab !== 'entry') await refresh(); return render(); }
+  if (d.tab) { st.tab = d.tab as Tab; if (st.tab === 'sync') { /* settings */ } else await refresh();
+    if (st.tab === 'entry') loadFormFor(st.child, st.form?.date || st.dayDate || todayStr());
+    return render(); }
   if (d.child) { setChild(d.child); return render(); }
   if (d.mood) { f.mood = +d.mood; return render(); }
-  if (d.pain) { f.pain = d.pain === 'na' ? null : +d.pain; if (!f.pain) f.painLocs = []; return render(); }
+  if (d.pain) { f.pain = d.pain === 'na' ? null : +d.pain; if (f.pain != null && f.pain > 0) f.hasPain = true; return render(); }
   if (d.sleep) { f.sleep = f.sleep === d.sleep ? null : d.sleep as Sleep; return render(); }
   if (d.appetite) { f.appetite = f.appetite === d.appetite ? null : d.appetite as Appetite; return render(); }
-  if (d.ploc) { f.painLocs = toggle(f.painLocs, d.ploc); return render(); }
+  if (d.ploc) { f.painLocs = toggle(f.painLocs, d.ploc); if (f.painLocs.length) f.hasPain = true; return render(); }
   if (d.med) {
     f.medDoses = f.medDoses ?? [];
     const i = f.medDoses.findIndex(x => x.name === d.med);
@@ -332,9 +419,16 @@ $app.addEventListener('click', async ev => {
   }
   if (d.mdel) { const i = +d.mdel; const name = f.medDoses?.[i]?.name; if (f.medDoses) f.medDoses.splice(i, 1); if (name) f.meds = f.meds.filter(x => x !== name); return render(); }
   if (d.mo) { st.monthOffset = Math.min(0, st.monthOffset + +d.mo); return render(); }
-  if (d.mday) { st.dayDate = d.mday; st.tab = 'day'; window.scrollTo(0, 0); return render(); }
+  if (d.mday) { st.dayDate = d.mday; loadFormFor(st.child, d.mday); st.tab = 'day'; window.scrollTo(0, 0); return render(); }
   if (d.wk) { st.weekOffset += +d.wk; if (st.weekOffset > 0) st.weekOffset = 0; return render(); }
-  if (d.dd) { const x = new Date(st.dayDate + 'T12:00'); x.setDate(x.getDate() + +d.dd); const s = x.toISOString().slice(0, 10); if (s <= todayStr()) st.dayDate = s; return render(); }
+  if (d.dd) { const s = addDays(st.dayDate, +d.dd); if (s <= todayStr()) { st.dayDate = s; loadFormFor(st.child, s); } return render(); }
+  if (d.edate) { const s = addDays(st.form.date || todayStr(), +d.edate); if (s <= todayStr()) loadFormFor(st.child, s); return render(); }
+  if ('painflag' in d || b.id === 'painflag') {
+    const on = !isPainOn(f);
+    f.hasPain = on;
+    if (!on) { f.pain = null; f.painLocs = []; f.painDetail = ''; }
+    return render();
+  }
   if (d.del) { if (!confirm('Delete this entry?')) return; const e = await db.getEntry(d.del); if (e) { e.deleted = true; await saveEntry(e); await refresh(); render(); } return; }
   switch (b.id) {
     case 'rash': f.rash = !f.rash; return render();
@@ -348,12 +442,28 @@ $app.addEventListener('click', async ev => {
     case 'fever': f.fever = !f.fever; return render();
     case 'addMed': { const n = prompt('New medicine name')?.trim(); if (n && !st.meds.meds.some(m => m.toLowerCase() === n.toLowerCase())) { await saveMeds([...st.meds.meds, n]); f.medDoses = f.medDoses ?? []; f.medDoses.push({ name: n, dose: '', time: nowTime() }); f.meds = [...f.meds, n]; } return render(); }
     case 'save': {
-      const empty = f.mood === null && !(f.pain ?? 0) && !f.meds.length && !(f.medDoses?.length) && !f.rash && !f.constipated && !f.sleep && !f.tired && !f.emotional && !f.nauseous && !f.fever && f.temp == null && !f.tummy && !f.cough && !f.runnyNose && !f.appetite && f.pain === 0 && !f.notes.trim();
-      if (empty) return toast('Nothing to save yet');
-      f.child = st.child; f.memberId = memberByName(st.child)?.id; f.ts = Date.now();
+      const notesEl = document.getElementById('notes') as HTMLTextAreaElement | null;
+      if (notesEl) f.notes = notesEl.value;
+      const detailEl = document.getElementById('painDetail') as HTMLInputElement | null;
+      if (detailEl) f.painDetail = detailEl.value;
+      const dateEl = document.getElementById('date') as HTMLInputElement | null;
+      if (dateEl?.value) f.date = dateEl.value;
+      const tempEl = document.getElementById('temp') as HTMLInputElement | null;
+      if (tempEl) { const n = tempEl.value === '' ? null : parseFloat(tempEl.value); f.temp = n; if (n != null && n >= 38) f.fever = true; }
+      document.querySelectorAll('[data-mdose]').forEach(el => { const i = +((el as HTMLElement).dataset.mdose || -1); if (f.medDoses?.[i]) f.medDoses[i].dose = (el as HTMLInputElement).value; });
+      document.querySelectorAll('[data-mtime]').forEach(el => { const i = +((el as HTMLElement).dataset.mtime || -1); if (f.medDoses?.[i]) f.medDoses[i].time = (el as HTMLInputElement).value; });
+      if (isEmptyEntry(f)) return toast('Nothing to save yet');
+      f.child = st.child; f.memberId = memberByName(st.child)?.id; f.date = f.date || st.dayDate || todayStr(); f.ts = Date.now();
+      f.hasPain = isPainOn(f);
       f.meds = (f.medDoses?.map(x => x.name) ?? f.meds);
-      await saveEntry({ ...f, medDoses: [...(f.medDoses ?? [])] }); await refresh(); toast(`Saved for ${st.child} ✓`);
-      st.form = blank(); window.scrollTo(0, 0); return render();
+      const saved = await saveEntry({ ...f, medDoses: [...(f.medDoses ?? [])], painLocs: [...(f.painLocs ?? [])] });
+      await refresh();
+      const live = st.entries.find(e => e.id === (saved?.id || f.id)) || f;
+      st.form = { ...live, medDoses: [...(live.medDoses ?? [])], painLocs: [...(live.painLocs ?? [])] };
+      st.dayDate = st.form.date;
+      lastSaved = { child: st.form.child, date: st.form.date, id: st.form.id };
+      toast(`Saved for ${st.form.child}, ${shortDay(st.form.date)} ✓`);
+      return render();
     }
     case 'google': case 'login': case 'create': {
       const a = st.adapter!; st.syncErr = '';
@@ -372,13 +482,18 @@ $app.addEventListener('click', async ev => {
   if (import.meta.env.DEV && location.hash.includes('demo') && !(await db.allEntries()).length) await (await import('./demo')).seed(db.putEntry, todayStr());
   await ensureMembers(); // pick up any people mentioned in just-seeded health entries
   if (import.meta.env.DEV && location.hash.includes('demo') && !S.list('events').length) await (await import('./demo')).seedV2(todayStr());
-  S.bus.rerender = render; S.bus.toast = toast; S.bus.dismiss = dismiss; S.bus.me = localStorage.getItem('me') ?? '';
+  S.bus.rerender = render; S.bus.toast = toast; S.bus.dismiss = dismiss;
+  const meName = localStorage.getItem('me') ?? '';
+  const users = appUsers();
+  if (meName && users.some(a => a.name === meName)) S.bus.me = meName;
+  else { S.bus.me = ''; if (meName) localStorage.removeItem('me'); }
   const valid = members();
   const last = (await db.getKV<string>('lastChild')) ?? '';
   st.child = valid.some(m => m.name === last) ? last : (kids()[0]?.name ?? valid[0]?.name ?? 'Phoebe');
   const lastMod = localStorage.getItem('lastMod') || '';
   mod = (VALID_MODS as string[]).includes(lastMod) ? lastMod as Mod : 'home';
-  await refresh(); st.form = blank();
+  await refresh();
+  loadFormFor(st.child, todayStr());
   if (location.hash.includes('pain')) Object.assign(st.form, { mood: 7, pain: 4, painLocs: ['Left knee'], meds: ['Panado'], sleep: 'Woke up once', tired: true, rash: true, tummy: true, cough: true, appetite: 'ok', fever: false, temp: 37.4, medDoses: [{ name: 'Panado', dose: '7.5 ml', time: '07:30' }] });
   const raw = location.hash;
   const blankHash = !raw || raw === '#' || raw === '#demo' || raw === '#/demo';

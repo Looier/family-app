@@ -65,6 +65,14 @@ Warm design system (CSS variables, light-first + cosy dark mode), SVG icon nav w
 - Family members default to **Thinus, Juazel, Phoebe and Jocelyn** (the kids). A leftover “Karri” member with no health logs is removed; existing Phoebe and Jocelyn health entries stay attached to them.
 - **A calmer layout.** Bottom navigation has five tabs: Home, Plan, Calendar, Shop, More. Health, Meals & recipes, To-dos, Notes, Wishlists and Settings live in the More sheet. To-dos are still one tap from Home via the Today card. Home itself is a short Today view (events, supper, a single line per kid unless something is flagged, due to-dos with yours first, shopping counts), capped at about three rows with See all. Forms show the essentials first, with advanced fields behind More details. The floating ＋ is Quick add, on every main screen. Still no analytics or trackers; older records stay compatible.
 
+## v2.3.3 (family-v2.3.3 / 0.2.6) – Health logging that’s obvious
+
+- **Fatigue** (tired / low energy) and **Pain** are first-class symptoms on the health log. Pain has an optional location (Head, Throat, Ear, Tummy, Back, Knee, Leg, Arm, Other, or Not sure where) plus a free-text line for detail such as “knee, not sure which”. Severity is optional. Both show on the day, week and month views and on Home’s Today card for the kids.
+- **Only Thinus and Juazel sign in.** “Who am I on this phone” lists just the two adults. Phoebe and Jocelyn stay on the family list as children you log health for, not as app users.
+- **The selected child is obvious** on the log, day, week and month screens: a large colour chip with a check, dimmer unselected chips, and a header such as “Logging for Jocelyn — Mon 24 Nov”. The date has previous / next buttons.
+- **Save confirmation stays on the screen**: “Saved for Jocelyn, Mon 24 Nov ✓”, plus a pending-sync vs synced (or saved-on-this-phone) state. After saving, the same entry stays open as “Editing saved entry”. The weekly view marks each day that has a log, with a coloured dot per child.
+- Switching child or date loads that person’s entry for that day (or a fresh form). It no longer silently retargets or moves another day’s record, and it no longer clears the form back to today after save.
+
 ## v2.3.2 (family-v2.3.2 / 0.2.5) – Wishlist save + starter recipes
 
 - **Wishlist add now reliably saves**, both from Quick add (the **Add** button) and from the Wishlists form (**Save**). A wish with no owner is no longer dropped from the list; the owner falls back to the last person you picked, then the first family member. Wishes whose owner doesn’t match a current member still show under their name (or Other). The optional link field is no longer a hidden `type="url"` input, which could block Save on a phone with no visible error.

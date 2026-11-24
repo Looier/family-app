@@ -6,11 +6,12 @@ import { dueToday, todoRow } from './todos';
 import { shopSummary } from './shopping';
 import { kids, ownerMini, isAssignedTo } from './members';
 import type { HealthEntry } from '../types';
+import { isPainOn } from '../types';
 import { MOOD_FACE, icon, avatar } from '../icons';
 import type { Module } from './types';
 
 function flagged(e: HealthEntry) {
-  return !!(e.fever || (e.temp != null && e.temp >= 38) || (e.pain ?? 0) > 3 || e.tummy || e.nauseous || e.cough || e.rash || e.emotional || e.appetite === 'poor' || e.appetite === 'none');
+  return !!(e.fever || (e.temp != null && e.temp >= 38) || (e.pain ?? 0) > 3 || isPainOn(e) || e.tired || e.tummy || e.nauseous || e.cough || e.rash || e.emotional || e.appetite === 'poor' || e.appetite === 'none');
 }
 function kidLine(entries: HealthEntry[]) {
   const t = todayStr(); const list = kids();
@@ -25,7 +26,8 @@ function kidLine(entries: HealthEntry[]) {
       const bits: string[] = [];
       if (e.fever || (e.temp != null && e.temp >= 38)) bits.push(`Fever${e.temp != null ? ' ' + e.temp + '°C' : ''}`);
       else if (e.temp != null) bits.push(e.temp + '°C');
-      if ((e.pain ?? 0) > 3) bits.push('Pain ' + e.pain);
+      if (isPainOn(e)) bits.push('Pain' + (e.pain != null && e.pain > 0 ? ' ' + e.pain : '') + (e.painLocs?.[0] || e.painDetail ? ' (' + [e.painLocs?.[0], e.painDetail].filter(Boolean).join(', ') + ')' : ''));
+      if (e.tired) bits.push('Fatigue');
       if (e.tummy) bits.push('Tummy');
       if (e.cough) bits.push('Cough');
       if (e.nauseous) bits.push('Nausea');
