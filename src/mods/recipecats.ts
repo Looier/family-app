@@ -28,3 +28,16 @@ export function normTag(t: string) {
   const hit = recipeCats().find(c => c.name.toLowerCase() === x);
   return hit?.name || t.trim();
 }
+
+export async function renameRecipeCat(id: string, name: string) {
+  const c = recipeCats().find(x => x.id === id); if (!c) return;
+  const n = name.trim(); if (!n) return c;
+  if (n.toLowerCase() === c.name.toLowerCase()) return await S.save('recipeCats', { ...c, name: n });
+  const clash = recipeCats().find(x => x.id !== id && x.name.toLowerCase() === n.toLowerCase());
+  if (clash) return clash;
+  return S.save('recipeCats', { ...c, name: n });
+}
+export const defaultMealCat = () => {
+  const cats = recipeCats();
+  return cats.find(c => c.id === 'rc-everyday' || c.name === 'Everyday')?.name || cats[0]?.name || '';
+};

@@ -8,14 +8,17 @@ import type { Todo } from './todos';
 import type { Ev } from './calendar';
 import type { Note } from './notes';
 import { defaultWishWho, type Wish } from './wishes';
+import { addRecipe } from './meals';
+import { recipeCats, defaultMealCat } from './recipecats';
 
-export type QAType = 'shop' | 'todo' | 'event' | 'note' | 'wish';
+export type QAType = 'shop' | 'todo' | 'event' | 'note' | 'wish' | 'meal';
 const TYPES: [QAType, string][] = [
   ['shop', 'Shopping item'],
   ['todo', 'To-do'],
   ['event', 'Calendar event'],
   ['note', 'Note'],
   ['wish', 'Wishlist item'],
+  ['meal', 'Meal'],
 ];
 const OCC = ['Birthday', 'Christmas', 'Anytime'];
 let open = false;
@@ -50,6 +53,11 @@ export function qaSheet() {
   } else if (kind === 'note') {
     fields = `<input name="title" required placeholder="Note title" autocomplete="off" enterkeyhint="done" autofocus>
     <textarea name="text" rows="3" placeholder="A few words (optional)"></textarea>`;
+  } else if (kind === 'meal') {
+    const cat = last('qaLastMealCat', defaultMealCat());
+    fields = `<input name="title" required placeholder="Meal name (e.g. Chicken à la King)" autocomplete="off" enterkeyhint="done" autofocus>
+    <h3>Category</h3>
+    <div class="chips">${recipeCats().map(c => `<label class="chip ${c.name === cat ? 'sel' : ''}"><input type="radio" name="cat" value="${esc(c.name)}" ${c.name === cat ? 'checked' : ''} hidden>${esc(c.name)}</label>`).join('') || '<p class="muted">No categories yet</p>'}</div>`;
   } else {
     const who = last('qaLastWishWho', defaultWishWho());
     const occ = last('qaLastOcc', 'Anytime');
@@ -104,6 +112,11 @@ export async function qaSubmit(f: HTMLFormElement) {
   } else if (kind === 'note') {
     await S.save<Note>('notes', { title, text: val(f, 'text'), pinned: false } as Note);
     S.bus.toast('Note saved ✓');
+  } else if (kind === 'meal') {
+    const cat = val(f, 'cat') || defaultMealCat();
+    if (cat) setLast('qaLastMealCat', cat);
+    const doc = await addRecipe(title, cat);
+    S.bus.toast(doc ? 'Meal added ✓' : 'Could not add', doc ? 'ok' : 'err');
   } else {
     const who = val(f, 'who') || defaultWishWho();
     const occasion = val(f, 'occasion') || 'Anytime';

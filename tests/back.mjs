@@ -130,7 +130,7 @@ await waitHash(/detail|\/meals\/book\//, 'recipe detail');
 await waitText('Ingredients|Add ingredients|Method', 'recipe detail body');
 await page.click('[data-rback]');
 await waitHash(/^#\/meals\/book\/?$/, 'in-app rback to book');
-await waitText('Spaghetti|Chicken|＋ New category', 'book after rback');
+await waitText('Spaghetti|Chicken|Everyday', 'book after rback');
 console.log('IN-APP rback', await hash());
 
 // --- Deep link + refresh (manage, wishes, plan mode) ---

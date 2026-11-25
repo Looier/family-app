@@ -30,6 +30,12 @@ Sample data for local testing (dev server only): open `…/#demo` on a fresh bro
 Local-first IndexedDB; optional Firebase Firestore sync (`src/sync-firebase.ts`) behind a `SyncAdapter` interface (`src/sync.ts`) so Supabase/self-hosted can replace it. No analytics, no trackers, no third-party scripts.
 
 
+## v2.3.5 (family-v2.3.5 / 0.2.8) – Add a meal, clearly
+
+- **Meals & recipes has an obvious “Add a meal” row** at the top of the recipe book: type a name, pick a category (Everyday is the default), tap ＋. A name alone is enough; ingredients and steps can be added later by opening the meal. The old empty-state hint to “tap ＋” was misleading — the floating button opened Quick add, which had no Meal option, and the only labelled add on the screen was “＋ New category”.
+- **Category management is in its own sheet** (the sliders button), labelled **New category**, with rename and delete. Delete is a soft delete and syncs, so a category created by mistake (for example “Chicken ala king”) can be removed without deleting any meals.
+- **Quick add now includes Meal**, with the same Everyday default.
+
 ## v2.3.4 (family-v2.3.4 / 0.2.7) – Calmer screens, wake-up, easier pain
 
 - **Shop list comes first.** The add field is one slim line with a small category picker (a bottom sheet, not a grid of chips) and a compact sort/filter button. Category management, sort and Quick add live in that sheet. Quantity, a note or an assignee only appear when you tap ··· or edit an item. If you filter to one category, a small dismissible pill is shown — not a second row of chips. The floating + is hidden on Shop and To-dos because those screens already have an inline add; Quick add is still in the Shop options sheet and on other screens.
