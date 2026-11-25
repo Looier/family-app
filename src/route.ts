@@ -12,7 +12,7 @@ const TABS: Record<string, string[]> = {
   todos: ['all', 'mine', 'other', 'overdue'],
   health: ['entry', 'day', 'week', 'month'],
 };
-const VIEWS = ['new', 'edit', 'detail', 'manage', 'pick', 'play', 'act', 'supper', 'event'];
+const VIEWS = ['new', 'edit', 'detail', 'manage', 'pick', 'play', 'act', 'supper', 'event', 'tools'];
 const ALIAS: Record<string, string> = { shop: 'shopping', recipes: 'meals', agenda: 'calendar', weekly: 'plan' };
 const MODS = ['home', 'plan', 'calendar', 'shopping', 'health', 'meals', 'todos', 'notes', 'wishes', 'settings'];
 

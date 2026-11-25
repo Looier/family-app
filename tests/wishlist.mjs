@@ -6,7 +6,7 @@ const base = (process.env.BASE_URL || 'http://127.0.0.1:5180').replace(/\/$/, ''
 function assert(cond, msg) { if (!cond) throw new Error('CHECK FAIL: ' + msg); }
 
 const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'] });
-const context = await browser.newContext({ viewport: { width: 412, height: 915 }, isMobile: true, hasTouch: true });
+const context = await browser.newContext({ viewport: { width: 412, height: 915 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', e => { errors.push(e.message); console.log('PAGEERROR', e.message); });

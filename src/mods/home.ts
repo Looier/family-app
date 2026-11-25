@@ -6,12 +6,12 @@ import { dueToday, todoRow } from './todos';
 import { shopSummary } from './shopping';
 import { kids, ownerMini, isAssignedTo } from './members';
 import type { HealthEntry } from '../types';
-import { isPainOn } from '../types';
+import { isPainOn, wakeLabel } from '../types';
 import { MOOD_FACE, icon, avatar } from '../icons';
 import type { Module } from './types';
 
 function flagged(e: HealthEntry) {
-  return !!(e.fever || (e.temp != null && e.temp >= 38) || (e.pain ?? 0) > 3 || isPainOn(e) || e.tired || e.tummy || e.nauseous || e.cough || e.rash || e.emotional || e.appetite === 'poor' || e.appetite === 'none');
+  return !!(e.fever || (e.temp != null && e.temp >= 38) || (e.pain ?? 0) > 3 || isPainOn(e) || e.tired || e.tummy || e.nauseous || e.cough || e.rash || e.emotional || e.appetite === 'poor' || e.appetite === 'none' || (e.wake && e.wake !== 'fine' && e.wake !== 'early-play'));
 }
 function kidLine(entries: HealthEntry[]) {
   const t = todayStr(); const list = kids();
@@ -21,12 +21,13 @@ function kidLine(entries: HealthEntry[]) {
     const e = es[0];
     const flag = e && flagged(e);
     let detail = 'Not logged yet';
-    if (e && !flag) detail = `${e.mood != null ? MOOD_FACE[e.mood - 1] + ' ' : ''}All good`;
+    if (e && !flag) detail = `${e.mood != null ? MOOD_FACE[e.mood - 1] + ' ' : ''}${e.wake && e.wake !== 'fine' ? wakeLabel(e.wake) : 'All good'}`;
     else if (e) {
       const bits: string[] = [];
+      if (e.wake) bits.push(wakeLabel(e.wake) || e.wake);
       if (e.fever || (e.temp != null && e.temp >= 38)) bits.push(`Fever${e.temp != null ? ' ' + e.temp + '°C' : ''}`);
       else if (e.temp != null) bits.push(e.temp + '°C');
-      if (isPainOn(e)) bits.push('Pain' + (e.pain != null && e.pain > 0 ? ' ' + e.pain : '') + (e.painLocs?.[0] || e.painDetail ? ' (' + [e.painLocs?.[0], e.painDetail].filter(Boolean).join(', ') + ')' : ''));
+      if (isPainOn(e)) bits.push('Pain' + (e.pain != null && e.pain > 0 ? ' ' + e.pain : '') + (e.painLocs?.length || e.painDetail ? ' (' + [...(e.painLocs || []), e.painDetail].filter(Boolean).join(', ') + ')' : ''));
       if (e.tired) bits.push('Fatigue');
       if (e.tummy) bits.push('Tummy');
       if (e.cough) bits.push('Cough');

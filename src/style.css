@@ -91,8 +91,8 @@ h2{font-size:20px;margin:12px 0}h3{font-size:16px;margin:16px 0 8px}h3 small{col
 /* ================= v2.1 design system ================= */
 body{font:17px/1.45 "Nunito","Segoe UI Variable","Google Sans",Roboto,system-ui,sans-serif;background:radial-gradient(120% 60% at 50% -10%,var(--bg2),var(--bg) 60%) fixed;-webkit-font-smoothing:antialiased}
 h1,h2,h3{letter-spacing:-.01em}h2{font-size:22px;font-weight:800}h3{font-size:16px;font-weight:700}
-main{padding:12px 16px 120px;animation:fadeup .28s ease both}
-@keyframes fadeup{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+main{padding:12px 16px 120px}
+@keyframes fadeup{from{opacity:0}to{opacity:1}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 button{transition:transform .12s ease,background .2s,box-shadow .2s}button:active{transform:scale(.97)}
 .ic{width:22px;height:22px;flex:none;vertical-align:-5px}
@@ -263,6 +263,7 @@ main{padding:8px 16px 120px;max-width:640px}
 .fab{position:fixed;right:16px;bottom:calc(72px + env(safe-area-inset-bottom));z-index:15;width:56px;height:56px;min-height:56px;border-radius:50%;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;box-shadow:0 8px 20px color-mix(in srgb,var(--acc) 40%,transparent);display:flex;align-items:center;justify-content:center}
 .fab .ic{width:26px;height:26px;stroke-width:2.6}
 .moreback{position:fixed;inset:0;background:rgb(40 30 20 / .35);z-index:30}
+button.moreback{width:auto;min-height:0;min-width:0;padding:0;border:0;border-radius:0;box-shadow:none;background:rgb(40 30 20 / .35)}
 .moresheet{position:fixed;left:0;right:0;bottom:0;z-index:31;background:var(--card);border-radius:24px 24px 0 0;padding:12px 16px calc(16px + env(safe-area-inset-bottom));box-shadow:0 -8px 32px rgb(40 20 10 / .15);max-height:85vh;overflow:auto}
 .moresheet header{display:flex;align-items:center;margin-bottom:8px}
 .moresheet h2{margin:0;flex:1}
@@ -371,4 +372,90 @@ h2.logfor{font-size:22px;margin:4px 0 8px;line-height:1.25}
 @media (prefers-color-scheme:dark){
   .savedbanner{background:color-mix(in srgb,#3fa37a 22%,var(--card));color:#c8ecd9;border-color:#3fa37a}
   .syncstate.ok{color:#c8ecd9}
+}
+
+
+/* ---------- v2.3.4 / 0.2.7 declutter, shop bar, wake-up, pain sides ---------- */
+main.has-fab{padding-bottom:148px}
+main.no-fab{padding-bottom:108px}
+main.m-shopping{padding-top:6px}
+h2{font-size:20px;margin:8px 0 12px}h3{font-size:15px;margin:18px 0 8px;color:var(--ink)}
+.card{box-shadow:0 1px 2px rgb(80 50 20 / .05);padding:14px 16px;margin:14px 0}
+.card.quiet{box-shadow:none;border:1px solid color-mix(in srgb,var(--line) 80%,transparent);margin:12px 0}
+.subtabs{padding:6px 16px 4px;gap:4px}
+.subtabs button{min-height:40px;font-size:13px;font-weight:700}
+.chip{min-height:40px;padding:0 12px;font-size:14px;box-shadow:none}
+.item{padding-right:4px}
+.banner{margin:6px 16px 0;padding:5px 12px}
+
+/* Shop: slim add bar, list is the hero */
+.shopbar{position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:6px;padding:2px 0 8px;margin:0 0 4px;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(10px)}
+.shopbar .shopq{flex:1;min-width:0;margin:0;display:flex;align-items:center;gap:4px}
+.shopbar .shopq input{margin:0;min-height:48px;padding:10px 12px}
+.gpick.compact{flex:none;width:48px;max-width:48px;min-height:48px;padding:0;justify-content:center;gap:0;font-size:20px;box-shadow:none;border:1px solid var(--line);background:var(--card)}
+.gpick.compact .ic.tiny{width:11px;height:11px;margin-left:-2px;opacity:.7}
+.iconbtn,.morebtn{flex:none;width:44px;min-width:44px;min-height:48px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:var(--card);box-shadow:none;border:1px solid var(--line);border-radius:14px;color:var(--ink)}
+.morebtn{width:40px;min-width:40px;letter-spacing:.08em;color:var(--mut);font-weight:800}
+.morebtn.sel{border-color:var(--acc);color:var(--acc)}
+.toolsbtn .ic{width:20px;height:20px}
+.shopbar .addbtn{width:48px;min-width:48px;min-height:48px;flex:none}
+.qmore.slim{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0 0 10px}
+.qmore.slim p{grid-column:1/-1;margin:0}
+.filterpill{display:inline-flex;align-items:center;gap:8px;margin:0 0 10px;padding:4px 6px 4px 12px;border-radius:999px;background:color-mix(in srgb,var(--acc) 14%,var(--card));font-size:13px;font-weight:700}
+.filterpill button{min-height:32px;min-width:32px;padding:0;background:transparent;box-shadow:none;color:var(--mut)}
+.ssec{margin:4px 0 10px}
+.shead{min-height:48px}
+.ssec .item:last-child{margin-bottom:4px}
+.sheet.tools-sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;margin:0;max-height:80vh;overflow:auto;border-radius:24px 24px 0 0;padding:12px 16px calc(84px + env(safe-area-inset-bottom));box-shadow:0 -8px 32px rgb(40 20 10 / .18);display:block}
+.sheethead{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;margin:0 0 8px;padding-top:4px;background:var(--card)}
+.sheethead h2{margin:0;flex:1;font-size:18px}
+.catlist{display:flex;flex-direction:column;gap:4px;margin:4px 0 12px}
+.catrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;min-height:52px;padding:8px 12px;box-shadow:none;border:1px solid var(--line);background:var(--card);font-weight:700}
+.catrow.sel{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 14%,var(--card))}
+.catrow.manage{margin:0 0 8px;flex-wrap:wrap}
+.catrow .ico,.catrow .cemoji{font-size:20px}
+
+/* Wake-up + two-step pain */
+.wakeopts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0 0 16px}
+.wakeopts .wake{width:100%;text-align:left;min-height:52px;padding:8px 10px;border:1px solid var(--line);box-shadow:none;background:var(--card);font-weight:650;font-size:13px;line-height:1.25}
+.wakeopts .wake.sel{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 16%,var(--card));font-weight:800}
+#wakeNote{margin:0 0 16px}
+.painparts{margin:0 0 8px}
+.sidesheet{margin:8px 0 10px;padding:10px 12px;border-radius:16px;border:1px solid color-mix(in srgb,var(--acc) 40%,var(--line));background:color-mix(in srgb,var(--acc) 10%,var(--card))}
+.sidesheet p{margin:0 0 8px;font-weight:700}
+.paintags{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.ptag{display:inline-flex;align-items:center;gap:4px;padding:4px 4px 4px 10px;border-radius:999px;background:color-mix(in srgb,var(--acc) 16%,var(--card));font-size:13px;font-weight:700}
+.ptag button{min-height:28px;min-width:28px;padding:0;background:transparent;box-shadow:none;color:var(--mut)}
+.painbox{margin:8px 0 16px;padding:10px 0 0}
+
+/* Health chips stay clearly selected, just a little tighter */
+.kids.who-seg .kid{min-height:64px;font-size:16px;padding:6px 10px}
+.kids.who-seg .kid.sel{transform:scale(1.02);box-shadow:0 0 0 3px color-mix(in srgb,var(--pc,#888) 35%,transparent)}
+
+/* Plan week notes tucked away */
+.weekfold{padding:8px 14px}
+.weekfold>summary{display:flex;align-items:baseline;gap:8px;cursor:pointer;list-style:none;min-height:44px}
+.weekfold>summary::-webkit-details-marker{display:none}
+.weekfold>summary b{font-size:16px}
+.weekfold>summary small{color:var(--mut);font-weight:600}
+.weekfold[open]>summary{margin-bottom:8px}
+
+/* Home / lists: calmer type and room above the nav */
+.kidline{min-height:52px}
+.daycard{margin:12px 0}
+.emptyart{padding:28px 16px;text-align:center;color:var(--mut)}
+.emptyart span{font-size:32px;display:block;margin-bottom:6px}
+.pill.wake{background:color-mix(in srgb,var(--acc2) 22%,var(--card))}
+
+@media (prefers-color-scheme:dark){
+  .card{box-shadow:none;border-color:#4a403a}
+  .filterpill,.ptag,.wakeopts .wake.sel,.catrow.sel{background:color-mix(in srgb,var(--acc) 22%,var(--card))}
+  .shopbar{background:color-mix(in srgb,var(--bg) 90%,transparent)}
+  input,textarea{border-color:#5a4e46;background:#3a322e}
+  input::placeholder,textarea::placeholder{color:#cbbfb6;opacity:.9}
+  .chip,.wakeopts .wake,.catrow,.iconbtn,.morebtn,.gpick.compact,.tog{border-color:#5a4e46;color:var(--ink)}
+  .item{background:#322c28}
+  .shead b,.iname{color:var(--ink)}
+  .sidesheet{background:color-mix(in srgb,var(--acc) 18%,#322c28);border-color:color-mix(in srgb,var(--acc) 55%,#5a4e46)}
+  .sidesheet p,.painbox h3,.wakeopts+.painbox{color:var(--ink)}
 }

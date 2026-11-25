@@ -1,6 +1,6 @@
 import * as S from '../store';
 import { esc, val } from '../util';
-import { CAT_ICON } from '../icons';
+import { CAT_ICON, icon } from '../icons';
 import { ownerRadios, asOwner, ownerMini } from './members';
 import type { Module } from './types';
 
@@ -78,7 +78,8 @@ const isHidden = (id: string) => !!hiddenMap()[id];
 const isCollapsed = (id: string) => !!collapsedMap()[id];
 const setFlag = (key: string, id: string, on: boolean) => { const m = key === LS_COLLAPSE ? collapsedMap() : hiddenMap(); if (on) m[id] = true; else delete m[id]; localStorage.setItem(key, JSON.stringify(m)); };
 
-let curList = '', editing: ShopItem | null = null, managing = false, pickingCat = false, quickMore = false, trolleyOpen = false, showMoreEdit = false;
+let curList = '', editing: ShopItem | null = null, managing = false, pickingCat = false, shopTools = false, quickMore = false, trolleyOpen = false, showMoreEdit = false;
+export function closeShopOverlays() { shopTools = false; pickingCat = false; }
 let filter = localStorage.getItem(LS_FILTER) || 'all';
 let lastGroup = localStorage.getItem(LS_LAST) || 'sc-food';
 let sortBy = (localStorage.getItem('shopSort') as 'name' | 'added' | 'manual') || 'name';
@@ -128,23 +129,53 @@ export function shopSummary() {
 const r = () => S.bus.rerender();
 const row = (i: ShopItem, gid?: string) => `<div class="item ${i.done ? 'done' : ''}" data-sid="${i.id}">${sortBy === 'manual' && !i.done ? `<span class="ordbtns"><button type="button" class="ord" data-upitem="${i.id}" data-gid="${gid ?? groupOf(i)}" aria-label="Move up">↑</button><button type="button" class="ord" data-dnitem="${i.id}" data-gid="${gid ?? groupOf(i)}" aria-label="Move down">↓</button></span>` : ''}<button class="tick" aria-label="Tick" data-si="${i.id}"><span class="box"></span></button><button class="iname" data-sedit="${i.id}">${esc(i.name)}${i.qty ? ` <small>${esc(i.qty)}</small>` : ''}${i.note ? `<small class="muted">${esc(i.note)}</small>` : ''}${i.who && asOwner(i.who) !== 'Unassigned' ? `<small>${ownerMini(i.who)}</small>` : ''}</button></div>`;
 
+function toolsSheet(vis: ShopCat[], filt: string) {
+  return `<button type="button" class="moreback" data-shopmenu aria-label="Close"></button>
+  <div class="sheet tools-sheet" role="dialog" aria-label="List options">
+    <header class="sheethead"><h2>List options</h2><button type="button" class="gear" data-shopmenu aria-label="Close">✕</button></header>
+    <h3>Sort</h3>
+    <div class="chips">${(['name', 'added', 'manual'] as const).map(k =>
+      `<button type="button" class="chip ${sortBy === k ? 'sel' : ''}" data-ssort="${k}">${k === 'name' ? 'Name' : k === 'added' ? 'Date added' : 'Yours'}</button>`).join('')}</div>
+    <h3>Show</h3>
+    <div class="chips scrollx"><button type="button" class="chip ${filt === 'all' ? 'sel' : ''}" data-sfilter="all">All categories</button>${vis.map(c =>
+      `<button type="button" class="chip ${filt === c.id ? 'sel' : ''}" data-sfilter="${c.id}"><span class="cemoji">${c.icon}</span> ${esc(c.name)}${openIn(c.id).length ? ` <small>${openIn(c.id).length}</small>` : ''}</button>`).join('')}</div>
+    <div class="toggles">
+      <button type="button" class="tog" data-manage>Manage categories</button>
+      <button type="button" class="tog" data-qaopen>Quick add</button>
+    </div>
+  </div>`;
+}
+
+function catPickSheet() {
+  const lg = lastGroup;
+  return `<button type="button" class="moreback" data-togglepick aria-label="Close"></button>
+  <div class="sheet tools-sheet catpick" role="dialog" aria-label="Choose category">
+    <header class="sheethead"><h2>Add to</h2><button type="button" class="gear" data-togglepick aria-label="Close">✕</button></header>
+    <div class="catlist">${cats().map(c =>
+      `<button type="button" class="catrow ${c.id === lg ? 'sel' : ''}" data-setlast="${c.id}"><span class="cemoji">${c.icon}</span><span>${esc(c.name)}</span>${c.id === lg ? ' ✓' : ''}</button>`).join('')}</div>
+    <button type="button" class="tog" data-addcat>＋ New category</button>
+  </div>`;
+}
+
 function view() {
   const hidden = hiddenMap();
   const vis = visibleCats();
   const filt = filter !== 'all' && vis.some(c => c.id === filter) ? filter : 'all';
   const names = [...new Set(S.listAll<ShopItem>('shopItems').map(i => i.name))].sort();
   const lg = catById(lastGroup) || vis[0] || DEFAULT_CATS[0];
-  let h = `<div class="chips scrollx filt"><button class="chip ${filt === 'all' ? 'sel' : ''}" data-sfilter="all">All</button>${vis.filter(c => openIn(c.id).length || c.id === filt).map(c => `<button class="chip ${filt === c.id ? 'sel' : ''}" data-sfilter="${c.id}"><span class="cemoji">${c.icon}</span> ${esc(c.name.split(' / ')[0])} <small>${openIn(c.id).length}</small></button>`).join('')}<button class="chip add" data-manage>Manage</button></div>
-  <form class="quick shopq" data-form="shopadd">
-    <button type="button" class="gpick" data-togglepick aria-label="Category">${lg.icon}<span>${esc(lg.name.split(' / ')[0])}</span></button>
-    <input name="name" list="shopnames" placeholder="Add an item…" autocomplete="off" enterkeyhint="done">
-    <button class="addbtn" aria-label="Add">＋</button>
-  </form>
+  const filterCat = filt !== 'all' ? catById(filt) : null;
+  let h = `<div class="shopbar">
+    <button type="button" class="gpick compact" data-togglepick aria-label="Category: ${esc(lg.name)}">${lg.icon}${icon('chev', 'tiny')}</button>
+    <form class="quick shopq" data-form="shopadd" data-testid="shop-add">
+      <input name="name" list="shopnames" placeholder="Add an item…" autocomplete="off" enterkeyhint="done">
+      <button type="button" class="morebtn ${quickMore ? 'sel' : ''}" data-qmore aria-label="Qty, note or assignee">···</button>
+      <button class="addbtn" aria-label="Add">＋</button>
+    </form>
+    <button type="button" class="iconbtn toolsbtn" data-shopmenu aria-label="Sort and filter">${icon('sliders')}</button>
+  </div>
   <datalist id="shopnames">${names.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
-  ${pickingCat ? `<div class="gpicker">${cats().map(c => `<button type="button" class="chip ${c.id === lastGroup ? 'sel' : ''}" data-setlast="${c.id}">${c.icon} ${esc(c.name)}</button>`).join('')}<button type="button" class="chip add" data-addcat>＋ New category</button></div>` : ''}
-  <div class="sortrow">Sort ${(['name', 'added', 'manual'] as const).map(k => `<button type="button" class="chip sm ${sortBy === k ? 'sel' : ''}" data-ssort="${k}">${k === 'name' ? 'Name' : k === 'added' ? 'Date added' : 'Yours'}</button>`).join('')}
-  <button type="button" class="link quiet" data-qmore>${quickMore ? 'Hide details' : 'Qty, note or assignee'}</button></div>
-  ${quickMore ? `<div class="qmore"><input form="unused" name="q-qty" id="q-qty" placeholder="Qty (optional)" class="qty"><input id="q-note" placeholder="Note (optional)"><div class="muted small">Assignee and store can be added after, by tapping the item.</div></div>` : ''}`;
+  ${quickMore ? `<div class="qmore slim"><input form="unused" name="q-qty" id="q-qty" placeholder="Qty" class="qty"><input id="q-note" placeholder="Note"><p class="muted small">Assignee and store can be set by tapping the item.</p></div>` : ''}
+  ${filterCat ? `<div class="filterpill" data-testid="filter-pill">${filterCat.icon} ${esc(filterCat.name)}${openIn(filt).length ? ` · ${openIn(filt).length}` : ''} <button type="button" data-sfilter="all" aria-label="Show all">✕</button></div>` : ''}`;
 
   const sections = (filt === 'all' ? vis : vis.filter(c => c.id === filt));
   let any = false;
@@ -175,6 +206,8 @@ function view() {
       ${trolleyOpen ? `${done.map(it => row(it)).join('')}<button class="link" data-clear>Clear bought</button>` : ''}
     </section>`;
   }
+  if (shopTools) h += toolsSheet(vis, filt);
+  if (pickingCat) h += catPickSheet();
   return h;
 }
 
@@ -220,22 +253,25 @@ async function swapOrder(id: string, dir: number) {
 }
 
 export const shopping: Module = {
-  nav: () => managing ? { view: 'manage' } : editing ? { view: 'edit', id: editing.id } : {},
+  nav: () => managing ? { view: 'manage' } : editing ? { view: 'edit', id: editing.id } : shopTools ? { view: 'tools' } : pickingCat ? { view: 'pick' } : {},
   applyNav: n => {
-    if (n.view === 'manage') { managing = true; editing = null; }
-    else if ((n.view === 'edit' || n.id) && n.id) { const x = S.get<ShopItem>('shopItems', n.id); editing = x ? { ...x } : null; managing = false; }
-    else { editing = null; managing = false; }
+    if (n.view === 'manage') { managing = true; editing = null; shopTools = false; pickingCat = false; }
+    else if (n.view === 'tools') { shopTools = true; managing = false; editing = null; pickingCat = false; }
+    else if (n.view === 'pick') { pickingCat = true; shopTools = false; managing = false; editing = null; }
+    else if ((n.view === 'edit' || n.id) && n.id) { const x = S.get<ShopItem>('shopItems', n.id); editing = x ? { ...x } : null; managing = false; shopTools = false; pickingCat = false; }
+    else { editing = null; managing = false; shopTools = false; pickingCat = false; }
   },
-  tabs: () => [], tab: () => 'list', setTab: () => { editing = null; managing = false; },
+  tabs: () => [], tab: () => 'list', setTab: () => { editing = null; managing = false; shopTools = false; pickingCat = false; },
   render: () => managing ? manageView() : editing ? editForm() : view(),
   click: async b => {
     const d = b.dataset;
-    if (d.sfilter) { filter = d.sfilter; localStorage.setItem(LS_FILTER, filter); if (filter !== 'all') lastGroup = filter, localStorage.setItem(LS_LAST, lastGroup); r(); return true; }
+    if (d.sfilter) { filter = d.sfilter; localStorage.setItem(LS_FILTER, filter); if (filter !== 'all') lastGroup = filter, localStorage.setItem(LS_LAST, lastGroup); shopTools = false; r(); return true; }
     if (d.stog) { setFlag(LS_COLLAPSE, d.stog, !isCollapsed(d.stog)); r(); return true; }
     if ('trolley' in d) { trolleyOpen = !trolleyOpen; r(); return true; }
-    if ('togglepick' in d) { pickingCat = !pickingCat; r(); return true; }
+    if ('shopmenu' in d) { if (shopTools) { S.bus.dismiss(); return true; } shopTools = true; pickingCat = false; r(); return true; }
+    if ('togglepick' in d) { if (pickingCat) { S.bus.dismiss(); return true; } pickingCat = true; shopTools = false; r(); return true; }
     if (d.setlast) { lastGroup = d.setlast; localStorage.setItem(LS_LAST, lastGroup); pickingCat = false; r(); return true; }
-    if (d.ssort) { sortBy = d.ssort as typeof sortBy; localStorage.setItem('shopSort', sortBy); r(); return true; }
+    if (d.ssort) { sortBy = d.ssort as typeof sortBy; localStorage.setItem('shopSort', sortBy); shopTools = false; r(); return true; }
     if (d.upitem || d.dnitem) {
       const id = d.upitem || d.dnitem!, gid = d.gid || '';
       const list = sortItems(openIn(gid));
@@ -247,7 +283,7 @@ export const shopping: Module = {
     }
     if ('qmore' in d) { quickMore = !quickMore; r(); return true; }
     if ('emore' in d) { showMoreEdit = !showMoreEdit; r(); return true; }
-    if ('manage' in d) { managing = true; r(); return true; }
+    if ('manage' in d) { managing = true; shopTools = false; pickingCat = false; r(); return true; }
     if (d.hide) { setFlag(LS_HIDDEN, d.hide, !isHidden(d.hide)); r(); return true; }
     if (d.rencat) { const c = catById(d.rencat)!; const n = prompt('Category name', c.name)?.trim(); if (n) await S.save('shopCats', { ...c, name: n }); r(); return true; }
     if (d.arch) { const c = catById(d.arch)!; if (cats().length <= 1) { S.bus.toast('Keep at least one category'); return true; } if (confirm(`Archive “${c.name}”? Items stay, and can be moved later.`)) await S.save('shopCats', { ...c, archived: true }); r(); return true; }
@@ -262,9 +298,9 @@ export const shopping: Module = {
       } r(); return true;
     }
     if (d.si) { const i = S.get<ShopItem>('shopItems', d.si)!; await S.save('shopItems', { ...i, done: !i.done, doneAt: Date.now() }); r(); return true; }
-    if (d.sedit) { editing = { ...S.get<ShopItem>('shopItems', d.sedit)! }; showMoreEdit = !!(editing.qty || editing.note || (editing.who && asOwner(editing.who) !== 'Unassigned')); r(); return true; }
+    if (d.sedit) { editing = { ...S.get<ShopItem>('shopItems', d.sedit)! }; showMoreEdit = !!(editing.qty || editing.note || (editing.who && asOwner(editing.who) !== 'Unassigned')); shopTools = false; pickingCat = false; r(); return true; }
     if (d.sdel) { await S.remove('shopItems', d.sdel); editing = null; r(); return true; }
-    if ('cancel' in d) { editing = null; managing = false; r(); return true; }
+    if ('cancel' in d) { editing = null; managing = false; shopTools = false; pickingCat = false; r(); return true; }
     if ('clear' in d) {
       const filt = filter; const vis = new Set(visibleCats().map(c => c.id));
       for (const i of itemsAll().filter(i => i.done && (filt === 'all' ? vis.has(groupOf(i)) : groupOf(i) === filt))) await S.remove('shopItems', i.id);

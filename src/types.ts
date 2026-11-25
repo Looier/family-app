@@ -21,18 +21,55 @@ export interface HealthEntry {
   hasPain?: boolean;
   /** Free-text pain detail, e.g. 'knee, not sure which' */
   painDetail?: string;
+  /** How they woke up this morning (v2.3.4) */
+  wake?: string;
+  wakeNote?: string;
 }
 /** Legacy body-map labels; kept so older entries still display. */
 export const BODY_LOCS = ['Left knee','Right knee','Left hand','Right hand','Left elbow','Right elbow','Left hip','Right hip','Left leg & foot','Right leg & foot','Headache','Neck','Shoulders','Tummy'];
 /** Quick-pick pain locations (plus free-text detail on the form). */
-export const PAIN_LOCS = ['Head', 'Throat', 'Ear', 'Tummy', 'Back', 'Knee', 'Leg', 'Arm', 'Other', 'Not sure where'];
+export const PAIN_LOCS = ['Head', 'Throat', 'Ear', 'Tummy', 'Back', 'Knee', 'Leg', 'Ankle/Foot', 'Arm', 'Other', 'Not sure where'];
+export const PAIRED_PAIN = ['Ear', 'Knee', 'Leg', 'Ankle/Foot', 'Arm'];
+export const PAIN_SIDES = ['Left', 'Right', 'Both', 'Not sure'] as const;
+const LEGACY_PAIN: Record<string, string> = {
+  'Left knee': 'Knee', 'Right knee': 'Knee',
+  'Left hand': 'Arm', 'Right hand': 'Arm', 'Left elbow': 'Arm', 'Right elbow': 'Arm',
+  'Left hip': 'Back', 'Right hip': 'Back',
+  'Left leg & foot': 'Leg', 'Right leg & foot': 'Leg',
+  Headache: 'Head', Neck: 'Head', Shoulders: 'Back',
+};
+/** Base part for a stored tag, e.g. 'Knee · Both' or legacy 'Left knee' → 'Knee'. */
+export function painBase(tag: string) {
+  if (LEGACY_PAIN[tag]) return LEGACY_PAIN[tag];
+  return (tag.split(' · ')[0] || tag).trim();
+}
+export function painPartSelected(locs: string[] = [], part: string) {
+  return locs.some(t => t === part || t.startsWith(part + ' · ') || painBase(t) === part);
+}
+export function dropPainPart(locs: string[], part: string) {
+  return locs.filter(t => painBase(t) !== part && t !== part);
+}
 export function isPainOn(e: { hasPain?: boolean; pain?: number | null; painLocs?: string[]; painDetail?: string }) {
   return !!(e.hasPain || (e.pain != null && e.pain > 0) || (e.painLocs && e.painLocs.length) || (e.painDetail || '').trim());
 }
 export function painLocOptions(current: string[] = []) {
-  const extra = current.filter(x => x && !PAIN_LOCS.includes(x));
+  const known = new Set(PAIN_LOCS);
+  const extra = current.filter(x => x && !known.has(x) && !known.has(painBase(x)));
   return [...PAIN_LOCS, ...extra];
 }
+
+export const WAKE_OPTS: { id: string; label: string }[] = [
+  { id: 'early-play', label: 'Woke early and played happily' },
+  { id: 'fine', label: 'Woke up fine' },
+  { id: 'struggled', label: 'Struggled to wake up' },
+  { id: 'pain', label: 'Woke with pain' },
+  { id: 'emotional', label: 'Woke up emotional or teary' },
+  { id: 'night', label: 'Woke during the night' },
+];
+export function wakeLabel(id?: string) {
+  return WAKE_OPTS.find(o => o.id === id)?.label || '';
+}
+
 export const DEFAULT_MEDS = ['Telfast','Adco Zetafen','Allergex','Allerway','MTX','Folate','Melatonin','Nurofen','Panado','Stilpaine','Voltaren','Vitamin D Drops','Iron Drops','Avamist','Iliadin'];
 export type Sleep = 'Good' | 'Woke up once' | 'Woke up multiple times' | 'Woke up with pain';
 export const SLEEP_OPTS: Sleep[] = ['Good', 'Woke up once', 'Woke up multiple times', 'Woke up with pain'];

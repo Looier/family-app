@@ -65,12 +65,14 @@ function schoolLine(d: string, p?: DayPlan) {
 
 function weekView() {
   const w = getWeek(mon());
+  const hasMeta = !!(w?.notes || w?.goals);
   let h = `<div class="pager"><button data-pw="-1" aria-label="Previous week">‹</button><b>Week of ${fmt(mon(), { day: 'numeric', month: 'short' })}</b><button data-pw="1" aria-label="Next week">›</button></div>
-  <div class="card weekmeta"><h3>This week</h3>
+  <details class="weekfold card"${hasMeta ? ' open' : ''}>
+    <summary><b>This week</b><small>${hasMeta ? 'Notes & goals' : 'Add notes or goals'}</small></summary>
     <label>Notes<textarea data-wfield="notes" rows="2" placeholder="Anything the two of you want to remember…">${esc(w?.notes)}</textarea></label>
     <label>Goals<textarea data-wfield="goals" rows="2" placeholder="e.g. Batch-cook on Sunday">${esc(w?.goals)}</textarea></label>
     <button class="tog" data-copyweek>Copy last week</button>
-  </div>`;
+  </details>`;
   for (const d of days()) {
     const p = getDay(d);
     h += `<article class="card daycard ${d === todayStr() ? 'today' : ''}" data-openday="${d}">

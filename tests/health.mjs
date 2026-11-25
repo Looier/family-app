@@ -9,7 +9,7 @@ const shots = process.env.SHOTS || '/workspace/grok-bot/family-app/screenshots';
 function assert(cond, msg) { if (!cond) throw new Error('CHECK FAIL: ' + msg); }
 
 const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'] });
-const context = await browser.newContext({ viewport: { width: 412, height: 915 }, isMobile: true, hasTouch: true });
+const context = await browser.newContext({ viewport: { width: 412, height: 915 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', e => { errors.push(e.message); console.log('PAGEERROR', e.message); });
@@ -151,6 +151,43 @@ if ((await page.inputValue('#dayDate').catch(() => '')) !== today) {
 }
 await waitText('Day log for Jocelyn', 'day header');
 await waitText(nJToday, 'jocelyn today on day view');
+
+// --- Wake-up options and two-step pain location (fresh profile) ---
+const ctx2 = await browser.newContext({ viewport: { width: 412, height: 915 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+const p2 = await ctx2.newPage();
+p2.on('pageerror', e => { errors.push(e.message); console.log('PAGEERROR', e.message); });
+await p2.goto(base + '/#/health/entry', { waitUntil: 'networkidle' });
+await p2.evaluate(() => localStorage.setItem('me', 'Thinus'));
+await p2.click('[data-child="Phoebe"]');
+await p2.waitForFunction(() => /How did they wake up/i.test(document.body.innerText), null, { timeout: 8000 });
+const wakeBtn = p2.locator('[data-wake="fine"]');
+assert(await wakeBtn.count(), 'wake-up option missing');
+await wakeBtn.click();
+assert(await p2.locator('[data-wake="fine"].sel').count(), 'Woke up fine not selected');
+await p2.fill('#wakeNote', 'Slept through and hopped out of bed');
+await p2.click('#painflag');
+await p2.waitForSelector('[data-testid="pain-box"]');
+await p2.click('[data-ploc="Knee"]');
+await p2.waitForSelector('[data-testid="pain-side"]');
+assert(/Which Knee/i.test(await p2.locator('body').innerText()), 'side picker title missing');
+await p2.click('[data-pside="Knee|Both"]');
+await p2.waitForFunction(() => /Knee · Both/.test(document.body.innerText), null, { timeout: 5000 });
+// Head is unpaired — should add immediately
+await p2.click('[data-ploc="Head"]');
+await p2.waitForFunction(() => /Head/.test(document.body.innerText) && /Knee · Both/.test(document.body.innerText), null, { timeout: 5000 });
+await p2.click('#save');
+await p2.waitForFunction(() => /Saved for Phoebe/i.test(document.body.innerText), null, { timeout: 8000 });
+assert(await p2.locator('[data-wake="fine"].sel').count(), 'wake not selected after save');
+assert(/Knee · Both/.test(await p2.locator('body').innerText()), 'pain tag missing after save');
+await p2.reload({ waitUntil: 'networkidle' });
+await p2.click('[data-child="Phoebe"]');
+await p2.waitForFunction(() => /Editing saved entry/i.test(document.body.innerText), null, { timeout: 8000 });
+assert(await p2.locator('[data-wake="fine"].sel').count(), 'wake not restored after reload');
+assert((await p2.locator('#wakeNote').inputValue()) === 'Slept through and hopped out of bed', 'wake note missing after reload');
+assert(/Knee · Both/.test(await p2.locator('body').innerText()), 'pain tag missing after reload');
+assert(await p2.locator('[data-ploc="Knee"].sel').count(), 'Knee part not marked selected after reload');
+console.log('WAKE + PAIN SIDE PICKER OK');
+await ctx2.close();
 
 if (errors.length) throw new Error('page errors: ' + errors.join(' | '));
 console.log('ALL HEALTH CHECKS PASSED on', base, { today, yesterday });

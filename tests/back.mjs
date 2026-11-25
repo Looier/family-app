@@ -2,7 +2,7 @@
 import pkg from '/tmp/pw/node_modules/playwright-core/index.js';
 const { chromium } = pkg;
 
-const base = 'http://127.0.0.1:4173';
+const base = (process.env.BASE_URL || 'http://127.0.0.1:5182').replace(/\/$/, '');
 function assert(cond, msg) { if (!cond) throw new Error('CHECK FAIL: ' + msg); }
 
 const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'] });
@@ -43,7 +43,8 @@ await waitHash(/^#\/wishes$/, 'wishes hash');
 assert(!/more=1/.test(await hash()), 'more closed on wishes');
 console.log('WISHES', await hash(), (await text()).slice(0, 200));
 
-await page.click('[data-wedit]');
+if (await page.locator('[data-wedit]').count()) await page.locator('[data-wedit]').first().click();
+else await page.click('[data-wnew]');
 await waitText('Edit wish|New wish|Whose list', 'wish form');
 await waitHash(/#\/wishes\//, 'wish form hash');
 console.log('WISH FORM', await hash());
@@ -77,14 +78,20 @@ await waitText('Good (morning|afternoon|evening)', 'home again');
 // --- Shopping > category manage sheet ---
 await page.click('button.bnav-i[data-mod="shopping"]');
 await waitHash(/#\/shopping/, 'shopping');
-await waitText('Food / Groceries|Manage', 'shopping list');
+await waitText('Food / Groceries|Add an item', 'shopping list');
+await page.click('[data-shopmenu]');
+await waitText('List options|Manage categories', 'tools sheet');
+await waitHash(/tools/, 'tools hash');
 await page.click('[data-manage]');
 await waitText('Shopping categories', 'manage sheet');
 await waitHash(/manage/, 'manage hash');
 console.log('MANAGE', await hash());
 await page.goBack();
+await waitHash(/tools/, 'back to tools sheet');
+await waitText('List options|Manage categories', 'tools after manage back');
+await page.goBack();
 await waitHash(/#\/shopping(\/?|\/list)?$/, 'back to shopping list');
-await waitText('Manage', 'list after manage back');
+await waitText('Add an item|Food / Groceries', 'list after manage back');
 assert(!/Archive/.test(await text()) || /Food \/ Groceries/.test(await text()), 'manage closed');
 console.log('BACK shopping', await hash());
 
@@ -106,7 +113,8 @@ await page.click('button.bnav-i[data-mod="more"]');
 await waitText('Wishlists');
 await page.click('[data-mod="wishes"]');
 await waitHash(/^#\/wishes$/);
-await page.click('[data-wedit]');
+if (await page.locator('[data-wedit]').count()) await page.locator('[data-wedit]').first().click();
+else await page.click('[data-wnew]');
 await waitHash(/#\/wishes\//);
 await page.click('[data-cancel]');
 await waitHash(/^#\/wishes$/, 'in-app cancel to list');
@@ -143,7 +151,8 @@ for (const [h, re] of [
 // --- Dirty form: type, back, keep, then discard ---
 await page.goto(base + '/#/wishes', { waitUntil: 'networkidle' });
 await waitHash(/^#\/wishes$/);
-await page.click('[data-wedit]');
+if (await page.locator('[data-wedit]').count()) await page.locator('[data-wedit]').first().click();
+else await page.click('[data-wnew]');
 await waitHash(/#\/wishes\//);
 await page.fill('input[name="name"]', 'Changed wish title xyz');
 page.once('dialog', d => d.dismiss());

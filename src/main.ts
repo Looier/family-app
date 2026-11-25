@@ -1,5 +1,5 @@
 import './style.css';
-import { PAIN_LOCS, SLEEP_OPTS, APPETITE_OPTS, isPainOn, painLocOptions, type Sleep, type HealthEntry, type MedList, type Appetite } from './types';
+import { PAIN_LOCS, PAIRED_PAIN, PAIN_SIDES, SLEEP_OPTS, APPETITE_OPTS, WAKE_OPTS, isPainOn, painPartSelected, dropPainPart, type Sleep, type HealthEntry, type MedList, type Appetite } from './types';
 import * as db from './db';
 import { loadAdapter, type SyncAdapter } from './sync';
 import { renderWeek, renderDay, renderMonth } from './views';
@@ -24,7 +24,7 @@ import { shortErr, stripUndefined, shortDay, addDays } from './util';
 type Mod = 'home' | 'health' | 'calendar' | 'meals' | 'todos' | 'shopping' | 'plan' | 'settings' | 'notes' | 'wishes';
 const MODS: Record<string, Module> = { calendar, meals, todos, shopping, plan: weekly, notes, wishes };
 let mod: Mod = 'home';
-let moreOpen = false, healthMore = false;
+let moreOpen = false, healthMore = false, pendingPainPart = '';
 const MORE_MODS: Mod[] = ['health', 'meals', 'todos', 'notes', 'wishes', 'settings'];
 
 const $app = document.getElementById('app')!;
@@ -46,7 +46,7 @@ const blank = (date?: string): HealthEntry => ({
   id: uid(), child: st.child, memberId: memberByName(st.child)?.id, date: date || st.dayDate || todayStr(), ts: Date.now(),
   mood: null, pain: null, painLocs: [], hasPain: false, painDetail: '', sleep: null, tired: false, emotional: false, nauseous: false,
   rash: false, rashWhere: '', rashLocs: [], constipated: false, meds: [], notes: '', updatedAt: 0,
-  fever: false, temp: null, tummy: false, cough: false, runnyNose: false, appetite: null, medDoses: [],
+  fever: false, temp: null, tummy: false, cough: false, runnyNose: false, appetite: null, medDoses: [], wake: '', wakeNote: '',
 });
 
 function matchesPerson(e: HealthEntry, name: string) {
@@ -71,7 +71,7 @@ function isEmptyEntry(f: HealthEntry) {
   return f.mood === null && !isPainOn(f) && !f.meds.length && !(f.medDoses?.length)
     && !f.rash && !f.constipated && !f.sleep && !f.tired && !f.emotional && !f.nauseous
     && !f.fever && f.temp == null && !f.tummy && !f.cough && !f.runnyNose && !f.appetite
-    && !(f.notes || '').trim();
+    && !(f.notes || '').trim() && !f.wake && !(f.wakeNote || '').trim();
 }
 
 function loadFormFor(name: string, date: string) {
@@ -81,6 +81,7 @@ function loadFormFor(name: string, date: string) {
   const ex = entryFor(st.child, d);
   if (ex) st.form = { ...ex, medDoses: [...(ex.medDoses ?? [])], painLocs: [...(ex.painLocs ?? [])] };
   else st.form = blank(d);
+  pendingPainPart = '';
   st.form.child = st.child;
   st.form.memberId = memberByName(st.child)?.id;
   st.form.date = d;
@@ -197,7 +198,7 @@ function moreSheet() {
   </div>`;
 }
 function fab(body: string) {
-  if (moreOpen || qaOpen() || /class="sheet"/.test(body) || (mod === 'health' && st.tab === 'entry')) return '';
+  if (moreOpen || qaOpen() || /class="sheet"/.test(body) || (mod === 'health' && st.tab === 'entry') || mod === 'shopping' || mod === 'todos') return '';
   return `<button class="fab" data-qaopen aria-label="Quick add">${icon('plus')}</button>`;
 }
 function childPick() { return healthChips(st.child); }
@@ -227,12 +228,17 @@ function entryView() {
   </div>
   ${savedNote}
   ${editing ? '<p class="editing" data-testid="editing-label">Editing saved entry</p>' : ''}
+  <h3>How did they wake up? <small>optional</small></h3>
+  <div class="wakeopts" data-testid="wake-opts">${WAKE_OPTS.map(o => `<button type="button" class="wake ${f.wake === o.id ? 'sel' : ''}" data-wake="${o.id}">${esc(o.label)}</button>`).join('')}</div>
+  ${f.wake ? `<input id="wakeNote" placeholder="Optional note about the morning" value="${esc(f.wakeNote || '')}" autocomplete="off">` : ''}
   <h3>Mood <small>1 = awful · 10 = great</small></h3>${scale('mood', 1, 10, f.mood)}
   <div class="toggles grid tight">${tog('tired', 'tired', 'Fatigue')}<button type="button" id="painflag" class="tog ${painOn ? 'sel' : ''}">${painOn ? '☑' : '☐'} Pain</button>${tog('fever', 'fever', 'Fever')}${tog('tummy', 'tummy', 'Tummy ache')}${tog('cough', 'cough', 'Cough')}</div>
-  ${painOn ? `<div class="painbox">
-    <h3>Where does it hurt? <small>optional</small></h3>
-    ${chips('ploc', painLocOptions(f.painLocs), f.painLocs)}
-    <input id="painDetail" placeholder="More detail (e.g. knee, not sure which)" value="${esc(f.painDetail || "")}" autocomplete="off">
+  ${painOn || pendingPainPart ? `<div class="painbox" data-testid="pain-box">
+    <h3>Where does it hurt? <small>optional · tap a body part</small></h3>
+    <div class="chips painparts">${PAIN_LOCS.map(p => `<button type="button" class="chip ${painPartSelected(f.painLocs, p) ? 'sel' : ''}" data-ploc="${esc(p)}">${esc(p)}</button>`).join('')}</div>
+    ${pendingPainPart ? `<div class="sidesheet" data-testid="pain-side"><p>Which ${esc(pendingPainPart)}?</p><div class="chips">${PAIN_SIDES.map(s => `<button type="button" class="chip" data-pside="${esc(pendingPainPart)}|${s}">${esc(s)}</button>`).join('')}<button type="button" class="chip" data-psidecancel>Cancel</button></div></div>` : ''}
+    ${(f.painLocs || []).length ? `<div class="paintags">${f.painLocs.map(loc => `<span class="ptag">${esc(loc)} <button type="button" data-pdrop="${esc(loc)}" aria-label="Remove ${esc(loc)}">✕</button></span>`).join('')}</div>` : ''}
+    <input id="painDetail" placeholder="More detail (optional)" value="${esc(f.painDetail || "")}" autocomplete="off">
     <h3>Pain severity <small>optional</small></h3>
     ${scale('pain', 0, 10, f.pain)}
     <button data-pain="na" class="chip na ${f.pain === null ? 'sel' : ''}">No severity given</button>
@@ -310,7 +316,7 @@ function render() {
   else if (st.tab === 'day') body = healthHead('day', st.dayDate) + renderDay(st.entries.filter(e => matchesPerson(e, st.child) && e.date === st.dayDate), st.dayDate, todayStr());
   else if (st.tab === 'week') body = healthHead('week') + renderWeek(st.entries.filter(e => matchesPerson(e, st.child)), st.weekOffset, todayStr(), st.entries);
   else if (st.tab === 'month') body = healthHead('month') + renderMonth(st.entries.filter(e => matchesPerson(e, st.child)), st.monthOffset, todayStr());
-  $app.innerHTML = `${banner()}${subtabs()}<main class="m-${mod}">${body}</main>${fab(body)}${bnav()}${moreSheet()}${qaSheet()}<div id="toast"></div>`;
+  $app.innerHTML = `${banner()}${subtabs()}<main class="m-${mod}${fab(body) ? ' has-fab' : ' no-fab'}">${body}</main>${fab(body)}${bnav()}${moreSheet()}${qaSheet()}<div id="toast"></div>`;
   capturePristine();
   if (pendingToast) queueMicrotask(paintToast);
   if (!isApplying()) queueMicrotask(syncFromUi);
@@ -371,6 +377,7 @@ $app.addEventListener('input', e => {
   const t = e.target as HTMLInputElement; const f = st.form;
   if (t.id === 'notes') f.notes = t.value;
   if (t.id === 'painDetail') f.painDetail = t.value;
+  if (t.id === 'wakeNote') f.wakeNote = t.value;
   if (t.id === 'date') { loadFormFor(st.child, t.value || todayStr()); render(); return; }
   if (t.id === 'dayDate') { st.dayDate = t.value || todayStr(); loadFormFor(st.child, st.dayDate); render(); }
   if (t.id === 'temp') { const n = t.value === '' ? null : parseFloat(t.value); f.temp = n; if (n != null && n >= 38) f.fever = true; }
@@ -378,7 +385,7 @@ $app.addEventListener('input', e => {
   if (t.dataset.mtime) { const i = +t.dataset.mtime; if (f.medDoses?.[i]) f.medDoses[i].time = t.value; }
 });
 $app.addEventListener('click', async ev => {
-  const b = (ev.target as HTMLElement).closest('button,[data-go],[data-go2],[data-closemore],[data-qaclose],[data-qaopen]') as HTMLElement | null; if (!b) return;
+  const b = (ev.target as HTMLElement).closest('button,[data-go],[data-go2],[data-closemore],[data-qaclose],[data-qaopen],[data-shopmenu],[data-togglepick]') as HTMLElement | null; if (!b) return;
   if (b.classList.contains('tick') && !matchMedia('(prefers-reduced-motion: reduce)').matches) { b.closest('.item')?.classList.add('ticking'); navigator.vibrate?.(12); await new Promise(r => setTimeout(r, 260)); }
   const d = b.dataset; const f = st.form;
   if (d.healthwho) setChild(d.healthwho);
@@ -407,9 +414,33 @@ $app.addEventListener('click', async ev => {
   if (d.child) { setChild(d.child); return render(); }
   if (d.mood) { f.mood = +d.mood; return render(); }
   if (d.pain) { f.pain = d.pain === 'na' ? null : +d.pain; if (f.pain != null && f.pain > 0) f.hasPain = true; return render(); }
+  if (d.wake) {
+    f.wake = f.wake === d.wake ? '' : d.wake;
+    if (f.wake === 'pain') f.hasPain = true;
+    return render();
+  }
   if (d.sleep) { f.sleep = f.sleep === d.sleep ? null : d.sleep as Sleep; return render(); }
   if (d.appetite) { f.appetite = f.appetite === d.appetite ? null : d.appetite as Appetite; return render(); }
-  if (d.ploc) { f.painLocs = toggle(f.painLocs, d.ploc); if (f.painLocs.length) f.hasPain = true; return render(); }
+  if (d.ploc) {
+    const part = d.ploc;
+    if (painPartSelected(f.painLocs, part) && pendingPainPart !== part) {
+      f.painLocs = dropPainPart(f.painLocs, part);
+      pendingPainPart = '';
+      return render();
+    }
+    if (PAIRED_PAIN.includes(part)) { pendingPainPart = part; f.hasPain = true; return render(); }
+    f.painLocs = [...dropPainPart(f.painLocs, part), part];
+    f.hasPain = true; pendingPainPart = '';
+    return render();
+  }
+  if (d.pside) {
+    const [part, side] = d.pside.split('|');
+    if (part && side) { f.painLocs = [...dropPainPart(f.painLocs, part), `${part} · ${side}`]; f.hasPain = true; }
+    pendingPainPart = '';
+    return render();
+  }
+  if ('psidecancel' in d) { pendingPainPart = ''; return render(); }
+  if (d.pdrop) { f.painLocs = f.painLocs.filter(x => x !== d.pdrop); return render(); }
   if (d.med) {
     f.medDoses = f.medDoses ?? [];
     const i = f.medDoses.findIndex(x => x.name === d.med);
@@ -426,7 +457,7 @@ $app.addEventListener('click', async ev => {
   if ('painflag' in d || b.id === 'painflag') {
     const on = !isPainOn(f);
     f.hasPain = on;
-    if (!on) { f.pain = null; f.painLocs = []; f.painDetail = ''; }
+    if (!on) { f.pain = null; f.painLocs = []; f.painDetail = ''; pendingPainPart = ''; }
     return render();
   }
   if (d.del) { if (!confirm('Delete this entry?')) return; const e = await db.getEntry(d.del); if (e) { e.deleted = true; await saveEntry(e); await refresh(); render(); } return; }
@@ -446,6 +477,8 @@ $app.addEventListener('click', async ev => {
       if (notesEl) f.notes = notesEl.value;
       const detailEl = document.getElementById('painDetail') as HTMLInputElement | null;
       if (detailEl) f.painDetail = detailEl.value;
+      const wakeEl = document.getElementById('wakeNote') as HTMLInputElement | null;
+      if (wakeEl) f.wakeNote = wakeEl.value;
       const dateEl = document.getElementById('date') as HTMLInputElement | null;
       if (dateEl?.value) f.date = dateEl.value;
       const tempEl = document.getElementById('temp') as HTMLInputElement | null;

@@ -30,6 +30,13 @@ Sample data for local testing (dev server only): open `…/#demo` on a fresh bro
 Local-first IndexedDB; optional Firebase Firestore sync (`src/sync-firebase.ts`) behind a `SyncAdapter` interface (`src/sync.ts`) so Supabase/self-hosted can replace it. No analytics, no trackers, no third-party scripts.
 
 
+## v2.3.4 (family-v2.3.4 / 0.2.7) – Calmer screens, wake-up, easier pain
+
+- **Shop list comes first.** The add field is one slim line with a small category picker (a bottom sheet, not a grid of chips) and a compact sort/filter button. Category management, sort and Quick add live in that sheet. Quantity, a note or an assignee only appear when you tap ··· or edit an item. If you filter to one category, a small dismissible pill is shown — not a second row of chips. The floating + is hidden on Shop and To-dos because those screens already have an inline add; Quick add is still in the Shop options sheet and on other screens.
+- **Whole-app tidy-up.** Fewer visible controls, calmer cards, consistent type and spacing, and extra room so lists never sit under the floating + or the tab bar. On the weekly plan, notes and goals sit in a fold so the days come first. The selected child on Health is still obvious, just a little tighter. Dark theme is unchanged in character, only tidier.
+- **How did they wake up?** Optional single-select on the health log: Woke early and played happily, Woke up fine, Struggled to wake up, Woke with pain, Woke up emotional or teary, or Woke during the night, plus an optional morning note. “Woke with pain” also turns on the Pain fields. Wake-up shows on the day, week and month views and on Home’s Today card.
+- **Easier pain location.** Tap a body part first (Head, Throat, Ear, Tummy, Back, Knee, Leg, Ankle/Foot, Arm, Other, Not sure where). For paired parts (Ear, Knee, Leg, Ankle/Foot, Arm) a second step asks Left, Right, Both or Not sure. You can log more than one place; they show as compact tags such as “Knee · Both”. Free-text detail and optional severity remain. Older 0.2.6 locations still display.
+
 ## v2.0 (family-v2.0 / 0.2.0) – all sections live
 - **Home** – Today dashboard: today's events, tonight's supper, due/overdue to-dos, shopping count, big "Log health" button, module tiles. Set **"This phone is Thinus / Juazel"** at the bottom of Home (stored on the phone; drives the "Mine" to-do filter).
 - **Calendar** – month + agenda views; events with date, all-day/time, who (colour-coded Family/Thinus/Juazel/Phoebe/Jocelyn), repeat weekly/monthly/yearly, notes. Google/Outlook calendar sync is planned for later.

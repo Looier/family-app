@@ -80,7 +80,8 @@ function view() {
       h += '</section>';
     }
   }
-  if (!any) h += `<div class="emptyart"><span>🎁</span><b>No wishes yet</b><small>Add one with Quick add or the ＋ button.</small></div>`;
+  h += `<p class="addline"><button type="button" class="tog" data-wnew>＋ Add a wish</button></p>`;
+  if (!any) h += `<div class="emptyart"><span>🎁</span><b>No wishes yet</b><small>Add one here or with Quick add.</small></div>`;
   return h;
 }
 export const wishes: Module = {
@@ -95,6 +96,7 @@ export const wishes: Module = {
   click: async b => {
     const d = b.dataset;
     if (d.wfold) { toggle(d.wfold); r(); return true; }
+    if ('wnew' in d) { edit = { who: defaultWishWho(), occasion: 'Anytime', priority: 'med' }; r(); return true; }
     if (d.wedit) { edit = { ...S.get<Wish>('wishes', d.wedit)! }; r(); return true; }
     if (d.wdel) { await S.remove('wishes', d.wdel); edit = null; r(); return true; }
     if ('wmore' in d) { const box = document.getElementById('wmore'); if (box) box.classList.toggle('hidden'); return true; }

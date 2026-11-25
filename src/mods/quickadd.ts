@@ -2,7 +2,7 @@ import * as S from '../store';
 import { esc, val, todayStr } from '../util';
 import { avatar } from '../icons';
 import { members } from './members';
-import { addItems, addShopCat, cats, lastShopGroup, setLastShopGroup } from './shopping';
+import { addItems, addShopCat, cats, lastShopGroup, setLastShopGroup, closeShopOverlays } from './shopping';
 import { tlists } from './todos';
 import type { Todo } from './todos';
 import type { Ev } from './calendar';
@@ -70,7 +70,7 @@ export function qaSheet() {
 
 export async function qaClick(b: HTMLElement) {
   const d = b.dataset;
-  if ('qaopen' in d) { open = true; S.bus.rerender(); return true; }
+  if ('qaopen' in d) { closeShopOverlays(); open = true; S.bus.rerender(); return true; }
   if ('qaclose' in d) { open = false; S.bus.rerender(); return true; }
   if (d.qakind) { kind = d.qakind as QAType; setLast('qaLastType', kind); S.bus.rerender(); return true; }
   if ('qaaddcat' in d) {
